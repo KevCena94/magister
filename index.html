@@ -1808,17 +1808,30 @@ function actionBar(p, c){
     <button class="ok" data-buy="${p.id}">Preso io</button>
     <button class="oth" data-other="${p.id}">Ad altri</button>
     <button data-info="${p.id}">Statistiche</button>
-    <span class="hint">${p.mkt<=1
-      ? 'Fuori dai posti che la lega assorbirà: riempitivo da prendere a 1.'
-      : `Costerà circa <b>${p.mkt}</b>, ne vale <b>${p.val}</b>. Range ${p.min}–${p.max}.`}
-      ${cp<p.max?`Il tuo budget di ruolo ti ferma a ${cp}.`:''}
-      ${decisioneCanonica(p,c).action==='take'?'A questo prezzo il rapporto qualità/prezzo è favorevole: puoi rilanciare fino al massimo personale.'
-        :decisioneCanonica(p,c).action==='leave'?'A questo prezzo la spesa non è conveniente rispetto al tuo tetto e alle alternative: lascialo agli altri.'
-        :'A questo prezzo sei in una zona equilibrata: non inseguire il giocatore senza una necessità reale.'}
-      ${p.myMaxFactors?` Il massimo strategico considera ${p.myMaxFactors.alternative} alternativa${p.myMaxFactors.alternative===1?'':'e'} simile${p.myMaxFactors.alternative===1?'':'i'}, ${p.myMaxFactors.competitori?.length||0} rivale${(p.myMaxFactors.competitori?.length||0)===1?'':'i'} realmente competitiv${(p.myMaxFactors.competitori?.length||0)===1?'o':'i'} e una riserva dinamica di ${Math.round(p.myMaxFactors.riservaApplicata||0)} crediti per completare la rosa.`:''}
-      ${p.myActionLabel==='PRENDI'?' A questo prezzo il rapporto qualità/prezzo è favorevole nel contesto attuale.':p.myActionLabel==='LASCIA'?' A questo prezzo il premio richiesto è troppo alto rispetto alle alternative o al tuo tetto.':' A questo prezzo sei in una zona equilibrata: puoi aspettare senza inseguire.'}
-      ${p.pct!=null?` Alla prima è dato ${p.pct}% ${p.tit?'titolare':'in panchina'}${p.st?', '+p.st:''}.`:''}
-      ${p.astaCorr?` <b>Corretto dai prezzi reali di questa asta</b>: ${p.astaCorrFonte==='ruolo'?'i '+RN[p.r].toLowerCase()+' stanno costando':'l\'asta nel complesso sta andando'} ${p.astaCorr>1?'più del previsto':'meno del previsto'} (${p.astaCorr>1?'+':''}${Math.round((p.astaCorr-1)*100)}%).`:''}</span>
+    <span class="hint" id="auctionHint">${(()=>{
+      const prezzoAttuale = Math.max(1, Number(sugg)||1);
+      const d=valutaDecisioneAPrezzo(p,c,prezzoAttuale);
+      const f=p.myMaxFactors||{};
+      const tecnico=f.maxTecnico??p.max;
+      const strategico=p.myMax??tecnico;
+      const rivali=f.competitori?.length||0;
+      const alternative=Number(f.alternative??0);
+      const riserva=Math.round(f.riservaApplicata||0);
+      const base=p.mkt<=1
+        ? 'Giocatore da riempimento: il mercato lo assorbe intorno a 1 credito.'
+        : `Mercato stimato <b>${p.mkt}</b>; valore <b>${p.val}</b>; fascia statistica <b>${p.min}–${p.max}</b>.`;
+      const decisionText=d.action==='take'
+        ? `Decisione a <b>${prezzoAttuale}</b>: <b>PRENDI</b>. Al prezzo inserito il rapporto tra costo e valore è favorevole.`
+        : d.action==='leave'
+          ? `Decisione a <b>${prezzoAttuale}</b>: <b>LASCIA</b>. A questa cifra superi il limite conveniente rispetto al tuo budget o alle alternative.`
+          : `Decisione a <b>${prezzoAttuale}</b>: <b>IN MEDIA</b>. A questa cifra il prezzo è equilibrato: non serve inseguire il giocatore.`;
+      const budgetText=cp<p.max ? ` Il budget residuo assegnabile al ruolo arriva a <b>${cp}</b>.` : '';
+      const strategyText=` Massimo tecnico <b>${tecnico}</b>; massimo strategico <b>${strategico}</b>.`;
+      const contextText=` Il calcolo considera <b>${alternative}</b> alternativa${alternative===1?'':'e'} simile, <b>${rivali}</b> rival${rivali===1?'e':'i'} realmente competitiv${rivali===1?'o':'i'} e una riserva di <b>${riserva}</b> crediti.`;
+      const formText=p.pct!=null ? ` Prima fascia: <b>${p.pct}%</b> ${p.tit?'titolare':'panchina'}${p.st?', '+p.st:''}.` : '';
+      const corrText=p.astaCorr ? ` <b>Asta reale:</b> ${p.astaCorrFonte==='ruolo'?'il ruolo sta andando':'l’asta complessiva sta andando'} ${p.astaCorr>1?'sopra':'sotto'} le attese (${p.astaCorr>1?'+':''}${Math.round((p.astaCorr-1)*100)}%).` : '';
+      return base+decisionText+budgetText+strategyText+contextText+formText+corrText;
+    })()}</span>
   </div>`;
 }
 
@@ -1850,9 +1863,11 @@ function termometro(p, cp, val){
 }
 
 function aggiornaTermometro(){
-  const bar = $('#trkbar'); if(!bar) return;
-  const p = byId[S.open], c = conti(), cp = Math.min(cap(p.r, c), p.myMax||cap(p.r,c));
-  const val = Math.max(0, +($('#pr')||{}).value || 0);
+  const bar = $('#trkbar');
+  const p = byId[S.open], c = conti();
+  if(!p || !c) return;
+  const cp = Math.min(cap(p.r, c), p.myMax||cap(p.r,c));
+  const val = Math.max(1, +($('#pr')||{}).value || 1);
   const fondo = Math.max(p.max, cp, val) * 1.12;
   const now = $('#trknow');
   if(now) {
@@ -1865,6 +1880,30 @@ function aggiornaTermometro(){
   const cls=d.action==='take'?'raise':d.action==='leave'?'leave':'watch';
   state.textContent=d.label;
   state.className='decisionState '+cls;
+
+  const hint = $('#auctionHint');
+  if(hint){
+    const f=p.myMaxFactors||{};
+    const tecnico=f.maxTecnico??p.max;
+    const strategico=p.myMax??tecnico;
+    const rivali=f.competitori?.length||0;
+    const alternative=Number(f.alternative??0);
+    const riserva=Math.round(f.riservaApplicata||0);
+    const base=p.mkt<=1
+      ? 'Giocatore da riempimento: il mercato lo assorbe intorno a 1 credito.'
+      : `Mercato stimato <b>${p.mkt}</b>; valore <b>${p.val}</b>; fascia statistica <b>${p.min}–${p.max}</b>.`;
+    const decisionText=d.action==='take'
+      ? `Decisione a <b>${val}</b>: <b>PRENDI</b>. Al prezzo inserito il rapporto tra costo e valore è favorevole.`
+      : d.action==='leave'
+        ? `Decisione a <b>${val}</b>: <b>LASCIA</b>. A questa cifra superi il limite conveniente rispetto al tuo budget o alle alternative.`
+        : `Decisione a <b>${val}</b>: <b>IN MEDIA</b>. A questa cifra il prezzo è equilibrato: non serve inseguire il giocatore.`;
+    const budgetText=cp<p.max ? ` Il budget residuo assegnabile al ruolo arriva a <b>${cp}</b>.` : '';
+    const strategyText=` Massimo tecnico <b>${tecnico}</b>; massimo strategico <b>${strategico}</b>.`;
+    const contextText=` Il calcolo considera <b>${alternative}</b> alternativa${alternative===1?'':'e'} simile, <b>${rivali}</b> rival${rivali===1?'e':'i'} realmente competitiv${rivali===1?'o':'i'} e una riserva di <b>${riserva}</b> crediti.`;
+    const formText=p.pct!=null ? ` Prima fascia: <b>${p.pct}%</b> ${p.tit?'titolare':'panchina'}${p.st?', '+p.st:''}.` : '';
+    const corrText=p.astaCorr ? ` <b>Asta reale:</b> ${p.astaCorrFonte==='ruolo'?'il ruolo sta andando':'l’asta complessiva sta andando'} ${p.astaCorr>1?'sopra':'sotto'} le attese (${p.astaCorr>1?'+':''}${Math.round((p.astaCorr-1)*100)}%).` : '';
+    hint.innerHTML=base+decisionText+budgetText+strategyText+contextText+formText+corrText;
+  }
 }
 
 /* ---------- rosa ---------- */

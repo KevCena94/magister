@@ -1,0 +1,219 @@
+function fattoreGerarchia(p){
+  if(!st.usaGer || p.pct==null) return 1;
+  return Math.min(1.05, Math.max(0.5, 0.5 + 0.5*(p.pct/90)));
+}
+
+function contaMieiRuolo(ru){ return Object.keys(S.mie).reduce((n,id)=>n+(byId[id]?.r===ru?1:0),0); }
+function giocatoriDisponibiliRuolo(ru){ return P.filter(p=>p.r===ru && S.mie[p.id]===undefined && S.altrui[p.id]===undefined && p.mkt>1); }
+function fattoreCompetizioneAvversari(p,c){
+  // V36: misura la competizione reale, non il semplice numero di avversari.
+  // Ogni squadra viene pesata per capacita' economica, slot/necessita' del ruolo,
+  // comportamento storico e confidenza del profilo.
+  const altri=Math.max(0,LG.squadre-1);
+  if(!p || !c || !c[p.r] || !altri) return {fattore:1,confidenza:0,forti:0,deboli:0,competitori:[],score:0};
+  const totaleSlot=ORD.reduce((a,r)=>a+LG.slot[r],0);
+  const quotaRuolo=totaleSlot>0 ? LG.slot[p.r]/totaleSlot : 0;
+  const segnali=[];
+
+  for(let team=1;team<LG.squadre;team++){
+    const r=riepilogoSquadra(team);
+    const prof=profiloSquadra(team);
+    const roleSlots=Math.max(0,LG.slot[p.r]-(r.perRuolo[p.r]||0));
+    if(!roleSlots || r.slot<=0 || r.crediti<=0) continue;
+
+    const maxBidPossibile=Math.max(0,r.crediti-Math.max(0,r.slot-1));
+    const potenzaFin=limite(maxBidPossibile/Math.max(1,p.mkt||p.val||1),0,1.80);
+    const quotaTeam=r.slot>0 ? roleSlots/r.slot : 0;
+    const urgenza=quotaRuolo>0 ? limite(Math.sqrt(Math.max(0.01,quotaTeam/quotaRuolo)),0.55,1.55) : 1;
+    const roleProf=prof.byRole[p.r];
+    const ratioRole=roleProf?.ratio ?? prof.avg ?? 1;
+    const ratioGenerale=prof.avg||1;
+    const comportamento=limite(1 + (ratioRole-1)*0.75 + (ratioGenerale-1)*0.25,0.72,1.38);
+    const conf=Math.max(0,Math.min(1,(prof.conf||0)/100));
+
+    // Probabilita' sintetica di essere un concorrente concreto per questo giocatore.
+    const capacita=limite(potenzaFin/1.20,0,1);
+    const necessita=limite((roleSlots/Math.max(1,LG.slot[p.r]))*1.35,0,1);
+    const aggressivita=limite(profiloSquadra(team).aggress/100,0.15,1);
+    const interesse=limite(0.45*capacita + 0.30*necessita + 0.25*aggressivita,0,1);
+    const segnale=limite(potenzaFin*urgenza*comportamento,0.45,1.80);
+    const peso=conf>0 ? conf : 0.12;
+    segnali.push({team,conf,segnale,interesse,peso,crediti:r.crediti,slot:r.slot,roleSlots});
+  }
+
+  if(!segnali.length) return {fattore:1,confidenza:0,forti:0,deboli:0,competitori:[],score:0};
+  const pesoTot=segnali.reduce((a,x)=>a+x.peso,0);
+  const media=segnali.reduce((a,x)=>a+x.segnale*x.peso,0)/Math.max(0.001,pesoTot);
+  const score=segnali.reduce((a,x)=>a+x.interesse*x.peso,0)/Math.max(0.001,pesoTot);
+  const confidenza=limite(segnali.reduce((a,x)=>a+x.conf,0)/Math.max(1,segnali.length),0,1);
+  const impatto=0.22*(0.55+0.45*confidenza);
+  const fattore=limite(1+(media-1)*impatto + (score-0.5)*0.06,0.90,1.18);
+  const forti=segnali.filter(x=>x.interesse>=0.62 && x.conf>=0.35).length;
+  const deboli=segnali.filter(x=>x.interesse<=0.28 && x.conf>=0.35).length;
+  const competitori=segnali.filter(x=>x.interesse>=0.55).sort((a,b)=>b.interesse-a.interesse);
+  return {fattore,confidenza,forti,deboli,competitori,score};
+}
+function riservaStrategica(p,c,pool){
+  // V37: quanto conviene conservare per non compromettere gli acquisti futuri.
+  // Usiamo il costo di sostituzione realistico, non il giocatore piu' economico
+  // del dataset, e una riserva minima per gli altri ruoli.
+  const totLiberi=Math.max(0,c?.tot?.liberi||0);
+  if(totLiberi<=1) return {totale:0,altri:0,ruolo:0,perSlot:0};
+
+  const costoSostituzione=(ru,excludeId=null)=>{
+    const a=giocatoriDisponibiliRuolo(ru).filter(x=>x.id!==excludeId && Number(x.mkt)>1)
+      .sort((x,y)=>(x.mkt||9999)-(y.mkt||9999));
+    if(!a.length) return 1;
+    const n=Math.min(a.length, Math.max(1,Math.ceil((LG.slot[ru]||1)*0.30)));
+    const camp=a.slice(0,n).map(x=>Number(x.mkt)||1);
+    const media=camp.reduce((z,x)=>z+x,0)/camp.length;
+    return Math.max(1,Math.round(media*0.92));
+  };
+
+  let altri=0;
+  ORD.filter(r=>r!==p.r).forEach(r=>{
+    const k=Math.max(0,c[r]?.liberi||0);
+    altri += k*costoSostituzione(r);
+  });
+  const stesso=Math.max(0,(c[p.r]?.liberi||0)-1);
+  const ruolo=stesso*costoSostituzione(p.r,p.id);
+  const totale=Math.min(Math.max(0,c.tot.resid-1),altri+ruolo);
+  const perSlot=totLiberi>0?totale/totLiberi:0;
+  return {totale,altri,ruolo,perSlot};
+}
+function calcolaMassimoPersonale(p,c){
+  if(!p || !c || !c[p.r] || c[p.r].liberi<=0) return 0;
+  const teto=Math.max(0,cap(p.r,c));
+  if(!teto) return 0;
+
+  const need=c[p.r].liberi;
+  const pool=giocatoriDisponibiliRuolo(p.r);
+  const premium=pool.filter(x=>x.ptot!=null).sort((a,b)=>(b.ptot||0)-(a.ptot||0));
+  const pos=premium.findIndex(x=>x.id===p.id);
+  const rank=pos<0 ? premium.length : pos;
+  const share=premium.length ? Math.max(0,1-rank/Math.max(1,premium.length-1)) : 0.5;
+
+  const fasciaAlta=premium.filter(x=>(x.ptot||0)>=(p.ptot||0)*0.88).length;
+  const alternativeSimili=pool.filter(x=>x.id!==p.id &&
+    (x.ptot||0)>=(p.ptot||0)*0.82 && (x.ptot||0)<=(p.ptot||0)*1.08).length;
+  const scarsitaQualita=limite(1 + (2-Math.min(2,fasciaAlta))/10,0.92,1.10);
+  const sostituibilita=limite(1 + Math.min(1.5,alternativeSimili)/12,1,1.125);
+  const needFactor=limite(0.96 + 0.045*Math.min(5,need),0.96,1.18);
+
+  const budgetPerSlot=c.tot.liberi>0 ? c.tot.resid/c.tot.liberi : 0;
+  const quotaRuolo=c[p.r].liberi>0 ? c[p.r].quota/c[p.r].liberi : 0;
+  const sostenibilita=limite((budgetPerSlot*0.72 + quotaRuolo*0.28)/Math.max(1,p.val||p.mkt||1),0.55,1.35);
+
+  const valoreStat=Math.max(1,p.val||p.mkt||1);
+  const mercatoRif=Math.max(1,Number(p.mkt)||valoreStat);
+  const valoreBase=Math.max(1,Math.round(valoreStat*0.78 + mercatoRif*0.22));
+  let max=valoreBase;
+  max*=limite(0.96 + 0.12*share + 0.05*Math.min(1,need/4),0.96,1.15);
+  max*=scarsitaQualita;
+  max*=needFactor;
+
+  const mercatoLive=Math.max(1,Number(p.mkt)||valoreBase);
+  const rapportoMercato=limite(mercatoLive/valoreBase,0.82,1.22);
+  max*=1+0.18*(rapportoMercato-1);
+
+  const comp=fattoreCompetizioneAvversari(p,c);
+  max*=comp.fattore;
+
+  const opp=limite(1 + (scarsitaQualita-1)*0.70 - (sostituibilita-1)*0.85,0.92,1.08);
+  max*=opp;
+
+  const riserva=riservaStrategica(p,c,pool);
+  const maxTecnico=Math.max(1,Math.min(teto,Math.round(max)));
+
+  // V39 STABILITY: il costo-opportunita' non deve penalizzare una rosa vuota.
+  // All'inizio dell'asta non abbiamo ancora fatto acquisti, quindi il budget
+  // e' realmente disponibile e il massimo strategico coincide con quello
+  // tecnico. La riserva cresce progressivamente solo dopo i primi acquisti.
+  const acquistiEffettuati=Math.max(0,Number(c.tot.n)||0);
+  const slotTotali=Math.max(1,Number(c.tot.slot)||1);
+  const progressione=limite(acquistiEffettuati/Math.min(10,slotTotali),0,1);
+  const intensitaRiserva=acquistiEffettuati===0 ? 0 : 0.18 + 0.82*progressione;
+  const riservaApplicata=Math.round((riserva.altri+riserva.ruolo)*intensitaRiserva);
+
+  if(p.vd==='spingi') max=Math.max(max, Math.round(valoreBase*1.03));
+  const maxTecnicoFinal=Math.max(1,Math.min(teto,Math.round(max)));
+  const maxStrategicoFinal=Math.max(1,Math.min(maxTecnicoFinal,
+    Math.floor(Math.max(1,c.tot.resid-riservaApplicata))));
+
+  p.myMaxFactors={
+    base:valoreBase, mercato:rapportoMercato, competizione:comp.fattore,
+    confidenza:comp.confidenza, forti:comp.forti, deboli:comp.deboli,
+    competitori:comp.competitori, competitionScore:comp.score,
+    alternative:alternativeSimili, fasciaAlta, scarsitaQualita,
+    sostituibilita, sostenibilita, budgetPerSlot,
+    riservaTotale:riserva.totale, riservaAltri:riserva.altri,
+    riservaRuolo:riserva.ruolo, riservaApplicata, intensitaRiserva,
+    acquistiEffettuati, maxTecnico:maxTecnicoFinal,
+    maxStrategico:maxStrategicoFinal
+  };
+  return maxStrategicoFinal;
+}
+function valutaDecisioneAPrezzo(p,c,prezzo){
+  const max=p.myMax||calcolaMassimoPersonale(p,c);
+  const cp=cap(p.r,c);
+  const expected=Math.max(1,Number(p.mkt)||Number(p.val)||1);
+  const intrinsic=Math.max(1,Number(p.val)||expected);
+  const alt=Number(p.myMaxFactors?.alternative ?? 3);
+  const need=Number(c?.[p.r]?.liberi||0);
+  const qualityScarcity=Number(p.myMaxFactors?.scarsitaQualita||1);
+
+  if(!cp || need<=0 || prezzo>cp || prezzo>max) return {action:'leave',label:'LASCIA',ratio:prezzo/expected,reason:'tetto'};
+
+  // V35: la decisione non guarda più soltanto al confronto prezzo/min/max.
+  // Il prezzo viene confrontato con il mercato atteso e con la sostituibilità.
+  // Molte alternative => disciplina sul prezzo; poche alternative => piccolo
+  // premio accettabile, soprattutto se il ruolo è ancora necessario.
+  const scarcityPremium=Math.max(0,Math.min(0.10,(qualityScarcity-1)*0.55));
+  const alternativePremium=alt<=1 ? 0.075 : alt<=2 ? 0.055 : alt<=4 ? 0.025 : 0;
+  const needPremium=need>=3 ? 0.025 : need>=2 ? 0.015 : 0;
+  const tolerance=0.035+scarcityPremium+alternativePremium+needPremium;
+  const ratio=prezzo/expected;
+  const intrinsicRatio=prezzo/intrinsic;
+
+  // PRENDI: vero valore sotto mercato. Non richiede che il giocatore sia
+  // economico in assoluto: conta quanto è conveniente rispetto al contesto.
+  if(ratio<=0.90 && prezzo<=max) return {action:'take',label:'PRENDI',ratio,reason:'sconto'};
+  if(ratio<=1.00 && prezzo<=max && (alt<=2 || need>=3)) return {action:'take',label:'PRENDI',ratio,reason:'valore'};
+
+  // LASCIA: oltre il massimo oppure premio eccessivo quando le alternative
+  // sono numerose. Il valore statistico da solo non forza più il "lascia".
+  const tooExpensive = ratio > 1+tolerance;
+  const abundantAlternatives = alt>=5;
+  if(tooExpensive && abundantAlternatives) return {action:'leave',label:'LASCIA',ratio,reason:'alternative'};
+  if(ratio>1.12 && alt>=3) return {action:'leave',label:'LASCIA',ratio,reason:'premio'};
+  if(intrinsicRatio>1.28 && ratio>1.08 && alt>=4) return {action:'leave',label:'LASCIA',ratio,reason:'valore'};
+
+  return {action:'fair',label:'IN MEDIA',ratio,reason:'equilibrio'};
+}
+function calcolaDecisionePersonale(p,c){
+  const max=calcolaMassimoPersonale(p,c); p.myMax=max;
+  const d=valutaDecisioneAPrezzo(p,c,p.mkt||1);
+  p.myAction=d.action; p.myActionLabel=d.label; p.myDecisionRatio=d.ratio;
+}
+
+// V40: unica decisione canonica usata da tutti i componenti UI.
+// p.vd resta il consiglio statistico di base del dataset e non viene più
+// mostrato come decisione finale, evitando discrepanze tra lista e dettaglio.
+function decisioneCanonica(p,c){
+  if(!p || !c) return {action:'fair',label:'IN MEDIA',filter:'prezzo giusto'};
+  if(S.mie[p.id]!==undefined || S.altrui[p.id]) return {action:'taken',label:'ASSEGNATO',filter:'ALL'};
+  if(p.myAction && p.myActionLabel) return {action:p.myAction,label:p.myActionLabel,filter:p.myAction==='take'?'spingi':p.myAction==='leave'?'lascia':'prezzo giusto'};
+  calcolaDecisionePersonale(p,c);
+  return {action:p.myAction||'fair',label:p.myActionLabel||'IN MEDIA',filter:p.myAction==='take'?'spingi':p.myAction==='leave'?'lascia':'prezzo giusto'};
+}
+function costruisciAnalisi(){
+  const c=conti();
+  const ruoli=ORD.map(r=>{
+    const cc=datiCompetizioneRuolo(r);
+    const lib=giocatoriDisponibiliRuolo(r).length;
+    const market=cc.mercato==null?1:cc.mercato;
+    const pressure=Math.max(0.5, Math.min(1.6, market*cc.pressioneBudget*cc.pressioneRuolo*cc.pressioneTeam*cc.shortage));
+    const label=pressure>=1.12?'ALTA':pressure<=0.90?'BASSA':'MEDIA';
+    return {r,market,pressure,label,slot:cc.domandaResidua,premium:cc.premiumRimasti};
+  });
+  return {c,ruoli};
