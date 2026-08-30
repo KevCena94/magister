@@ -13,6 +13,21 @@
 
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+/* V27 mobile compact actions */
+@media(max-width:599px){
+  .fabocr,.fabdata{bottom:max(12px,env(safe-area-inset-bottom));}
+  .fabocr{left:max(12px,env(safe-area-inset-left));}
+  .fabdata{left:76px;right:auto;}
+  .fab{right:max(12px,env(safe-area-inset-right));}
+  .analysisActions{display:grid!important;grid-template-columns:1fr 1fr;gap:8px!important;}
+  .analysisActions button{min-height:48px!important;width:100%;}
+}
+@media(max-width:389px){
+  .fabdata{left:72px;}
+}
+</style>
 </head>
 <body>
 <div class="testa" id="testa">
@@ -26,8 +41,17 @@
     <button class="apri" id="apriTop" aria-expanded="false">Reparti</button>
     <button class="opzbtn" id="opzbtn" aria-expanded="false">Filtri</button>
     <button class="reset teamsBtn" id="openTeams">Squadre</button>
+    <button class="reset analysisBtn" id="openAnalysis">Analisi</button>
     <button class="reset" id="dati">Dati</button>
     <button class="reset" id="reset">Azzera</button>
+    <button class="hamburger" id="mobileMenuBtn" aria-expanded="false" aria-label="Apri menu">☰</button>
+  </div>
+  <div class="mobileMenu" id="mobileMenu" aria-hidden="true">
+    <button data-mobile-action="filters">Filtri</button>
+    <button data-mobile-action="teams">Squadre</button>
+    <button data-mobile-action="analysis">Analisi</button>
+    <button data-mobile-action="data">Dati</button>
+    <button data-mobile-action="reset">Azzera</button>
   </div>
   <div class="tsum" id="tsum">
     <div class="tbar"><i id="tbarfill"></i><u id="tbarmin"></u></div>
@@ -181,6 +205,15 @@
   <button class="close" id="closeRosaData">Chiudi</button>
 </div></div>
 
+
+<div class="sheet" id="analysisSheet"><div class="card analysisCard">
+  <div class="analysisHead"><div><h3>Analisi asta</h3><div class="sub">Decisioni rapide basate su budget, domanda, prezzi osservati e qualità dei giocatori rimasti.</div></div><button class="close" id="closeAnalysisTop">Chiudi</button></div>
+  <div id="analysisAlerts" class="analysisAlerts"></div>
+  <div id="analysisRoles" class="analysisRoles"></div>
+  <div class="analysisActions"><button class="ok" id="simulateTeam">Simula la mia rosa</button><button id="refreshAnalysis">Aggiorna analisi</button></div>
+  <div id="simulationResult" class="simulationResult"></div>
+  <button class="close" id="closeAnalysis">Chiudi</button>
+</div></div>
 
 <div class="sheet" id="teamsSheet"><div class="card teamsCard">
   <div class="teamsToolbar">
@@ -763,6 +796,177 @@ function fattoreGerarchia(p){
   return Math.min(1.05, Math.max(0.5, 0.5 + 0.5*(p.pct/90)));
 }
 
+function contaMieiRuolo(ru){ return Object.keys(S.mie).reduce((n,id)=>n+(byId[id]?.r===ru?1:0),0); }
+function giocatoriDisponibiliRuolo(ru){ return P.filter(p=>p.r===ru && S.mie[p.id]===undefined && S.altrui[p.id]===undefined && p.mkt>1); }
+function calcolaMassimoPersonale(p,c){
+  if(!p || !c || !c[p.r] || c[p.r].liberi<=0) return 0;
+  const teto=Math.max(0,cap(p.r,c));
+  if(!teto) return 0;
+  const need=c[p.r].liberi;
+  const pool=giocatoriDisponibiliRuolo(p.r);
+  const premium=pool.filter(x=>x.ptot!=null).sort((a,b)=>(b.ptot||0)-(a.ptot||0));
+  const rank=Math.max(0,premium.findIndex(x=>x.id===p.id));
+  const share=premium.length ? Math.max(0,1-rank/Math.max(1,premium.length-1)) : 0.5;
+  const scarcity=need>0 ? Math.min(1,(need/Math.max(1,premium.length))) : 0;
+  const urgency=Math.min(1.2,0.72+0.10*Math.min(4,need)+0.12*scarcity);
+  const quality=0.92 + 0.10*share + 0.06*scarcity;
+  let max=Math.round((p.val||p.mkt||1)*urgency*quality);
+  if(p.vd==='lascia') max=Math.min(max, Math.round((p.val||p.mkt||1)*0.92));
+  if(p.vd==='spingi') max=Math.max(max, Math.round((p.val||p.mkt||1)*1.03));
+  return Math.max(1, Math.min(teto, max));
+}
+function calcolaDecisionePersonale(p,c){
+  const max=calcolaMassimoPersonale(p,c); p.myMax=max;
+  const cp=cap(p.r,c);
+  const prezzo=p.mkt||1;
+  // La decisione mostrata nella scheda deve usare ESATTAMENTE la stessa
+  // logica del termometro: sotto il range = da prendere, dentro il range =
+  // prezzo in linea, sopra il massimo o oltre il budget di ruolo = lasciare.
+  if(!cp || c[p.r].liberi<=0){ p.myAction='leave'; p.myActionLabel='LASCIA'; return; }
+  if(prezzo>cp || prezzo>p.max){ p.myAction='leave'; p.myActionLabel='LASCIA'; return; }
+  if(prezzo<p.min){ p.myAction='take'; p.myActionLabel='PRENDI'; return; }
+  p.myAction='fair'; p.myActionLabel='IN MEDIA';
+}
+function costruisciAnalisi(){
+  const c=conti();
+  const ruoli=ORD.map(r=>{
+    const cc=datiCompetizioneRuolo(r);
+    const lib=giocatoriDisponibiliRuolo(r).length;
+    const market=cc.mercato==null?1:cc.mercato;
+    const pressure=Math.max(0.5, Math.min(1.6, market*cc.pressioneBudget*cc.pressioneRuolo*cc.pressioneTeam*cc.shortage));
+    const label=pressure>=1.12?'ALTA':pressure<=0.90?'BASSA':'MEDIA';
+    return {r,market,pressure,label,slot:cc.domandaResidua,premium:cc.premiumRimasti};
+  });
+  return {c,ruoli};
+}
+function generaAlert(analysis){
+  const out=[]; const c=analysis.c;
+  analysis.ruoli.forEach(x=>{
+    if(x.pressure>=1.14) out.push({type:'warn',text:`${RN[x.r]}: pressione alta (${Math.round((x.pressure-1)*100)}%). Preparati a spendere.`});
+    if(x.pressure<=0.88) out.push({type:'good',text:`${RN[x.r]}: mercato favorevole (${Math.round((x.pressure-1)*100)}%). Cerca valore.`});
+    if(x.premium>0 && x.premium<=Math.max(2,Math.round(x.slot*0.4))) out.push({type:'scarcity',text:`${RN[x.r]}: pochi giocatori di fascia alta ancora disponibili (${x.premium}).`});
+  });
+  if(c.tot.liberi>0 && c.tot.resid/c.tot.liberi<8) out.push({type:'warn',text:`Budget: restano ${c.tot.resid} crediti per ${c.tot.liberi} slot. Conserva liquidità.`});
+  if(!out.length) out.push({type:'ok',text:'Asta equilibrata: nessun allarme forte in questo momento.'});
+  return out.slice(0,6);
+}
+function drawAnalysis(){
+  const a=costruisciAnalisi();
+  $('#analysisAlerts').innerHTML=generaAlert(a).map(x=>`<div class="analysisAlert ${x.type}">${x.text}</div>`).join('');
+  $('#analysisRoles').innerHTML=a.ruoli.map(x=>`<section class="analysisRole role-${x.r}"><div class="analysisRoleHead"><b>${RN[x.r]}</b><span>${x.label}</span></div><div class="analysisRoleStats"><span>pressione <strong>${x.pressure.toFixed(2)}×</strong></span><span>slot domanda <strong>${x.slot}</strong></span><span>premium rimasti <strong>${x.premium}</strong></span><span>mercato <strong>${x.market.toFixed(2)}×</strong></span></div></section>`).join('');
+}
+function simulaRosa(){
+  // Simulazione da zero: usa l'intero budget della lega e tutti gli slot,
+  // cercando la combinazione di giocatori che massimizza i punti attesi.
+  // I prezzi usati sono quelli di mercato correnti, quindi la simulazione
+  // resta coerente con l'andamento live dell'asta.
+  const budgetTot=Math.max(0,Number(LG.budget)||1000);
+  const slotTot=ORD.reduce((s,r)=>s+(Number(LG.slot[r])||0),0);
+  const roleSlots={...LG.slot};
+  const candidatesByRole={};
+
+  ORD.forEach(r=>{
+    candidatesByRole[r]=giocatoriDisponibiliRuolo(r).map(p=>{
+      const cost=Math.max(1,Math.round(Number(p.mkt)||Number(p.val)||Number(p.fvm)||1));
+      const points=Number(p.ptot);
+      return {p,cost,points:Number.isFinite(points)?points:0};
+    }).filter(x=>x.cost<=budgetTot).sort((a,b)=>b.points-a.points);
+  });
+
+  // DP per ruolo: esattamente k giocatori, con un dato budget, massimizzando
+  // i punti attesi. Il costo viene tenuto come parte dello stato per poter
+  // combinare i quattro ruoli senza superare i 1000 crediti.
+  function bestForRole(r){
+    const k=Number(roleSlots[r])||0, pool=candidatesByRole[r];
+    const neg=-1e15;
+    let dp=Array.from({length:k+1},()=>Array(budgetTot+1).fill(neg));
+    let paths=Array.from({length:k+1},()=>Array(budgetTot+1).fill(null));
+    dp[0][0]=0;
+    for(const item of pool){
+      for(let n=k-1;n>=0;n--){
+        for(let b=budgetTot-item.cost;b>=0;b--){
+          if(dp[n][b]===neg) continue;
+          const nb=b+item.cost, score=dp[n][b]+item.points;
+          if(score>dp[n+1][nb]){
+            dp[n+1][nb]=score;
+            paths[n+1][nb]={prevB:b,item};
+          }
+        }
+      }
+    }
+    // Ricostruzione richiede gli stati precedenti per ogni item; la DP sopra
+    // con un solo puntatore non è sufficiente dopo aggiornamenti successivi.
+    // Per robustezza, usiamo una seconda DP che conserva la lista di indici.
+    const states=Array.from({length:k+1},()=>new Map());
+    states[0].set(0,{score:0,items:[]});
+    for(const item of pool){
+      for(let n=k-1;n>=0;n--){
+        const entries=[...states[n].entries()];
+        for(const [b,state] of entries){
+          const nb=b+item.cost;
+          if(nb>budgetTot) continue;
+          const ns=state.score+item.points;
+          const cur=states[n+1].get(nb);
+          if(!cur || ns>cur.score || (Math.abs(ns-cur.score)<1e-9 && nb>cur.spent)){
+            states[n+1].set(nb,{score:ns,spent:nb,items:state.items.concat(item)});
+          }
+        }
+      }
+    }
+    return states[k];
+  }
+
+  const roleStates={};
+  for(const r of ORD){
+    roleStates[r]=bestForRole(r);
+    if(!roleStates[r].size){
+      $('#simulationResult').innerHTML='<div class="simulationEmpty">Non ci sono abbastanza giocatori/prezzi per costruire una rosa completa con i vincoli attuali.</div>';
+      return;
+    }
+  }
+
+  // Combina i quattro ruoli cercando il massimo dei punti. Per privilegiare
+  // l'uso effettivo dei 1000 crediti, a parità di punti viene scelto il budget
+  // speso maggiore; se esiste una soluzione esatta a 1000, è sempre preferita.
+  let combined=new Map([[0,{score:0,spent:0,groups:{}}]]);
+  for(const r of ORD){
+    const next=new Map();
+    for(const [spent0,base] of combined){
+      for(const [spentRole,state] of roleStates[r]){
+        const spent=spent0+spentRole;
+        if(spent>budgetTot) continue;
+        const score=base.score+state.score;
+        const cur=next.get(spent);
+        if(!cur || score>cur.score){
+          next.set(spent,{score,spent,groups:{...base.groups,[r]:state.items}});
+        }
+      }
+    }
+    combined=next;
+  }
+
+  let best=null;
+  for(const [spent,x] of combined){
+    if(!best || x.score>best.score || (Math.abs(x.score-best.score)<1e-9 && spent>best.spent)) best=x;
+  }
+  if(!best){
+    $('#simulationResult').innerHTML='<div class="simulationEmpty">Impossibile costruire una rosa completa.</div>';
+    return;
+  }
+
+  const all=ORD.flatMap(r=>best.groups[r]||[]);
+  const exact=best.spent===budgetTot;
+  const groups=ORD.map(r=>{
+    const arr=(best.groups[r]||[]).slice().sort((a,b)=>b.points-a.points);
+    return `<div class="simGroup"><h4 class="role-${r}">${RN[r]} <span>${arr.length}/${roleSlots[r]}</span></h4>${arr.map(x=>`<div><span>${escHtml(x.p.n)}</span><b>${x.cost}</b></div>`).join('')}</div>`;
+  }).join('');
+  const points=all.reduce((s,x)=>s+x.points,0);
+  const avg=all.length?points/all.length:0;
+  const resid=Math.max(0,budgetTot-best.spent);
+  $('#simulationResult').innerHTML=`<div class="simulationSummary"><b>Rosa ottimizzata</b><span>${all.length}/${slotTot} giocatori · ${best.spent}/${budgetTot} crediti${exact?'':' · '+resid+' residui'}</span><strong>${Math.round(points*10)/10} punti attesi</strong></div>${groups}`;
+}
+
+
 function calcolaPrezzi(mostraTrend=false){
   const quote = st.rip==='media' ? DATA.quote_media : DATA.quote;
   const mktPrecedenti = new Map(P.map(p=>[p.id, Number(p.mkt)||0]));
@@ -812,6 +1016,8 @@ function calcolaPrezzi(mostraTrend=false){
   });
 
   ricalibraConAsta();
+  const cNow=conti();
+  P.forEach(p=>{ if(S.mie[p.id]===undefined && S.altrui[p.id]===undefined) calcolaDecisionePersonale(p,cNow); else { p.myMax=0; p.myAction='leave'; } });
   if(mostraTrend){
     for(const p of P){
       if(S.mie[p.id]!==undefined || S.altrui[p.id]!==undefined) continue;
@@ -1352,6 +1558,10 @@ function actionBar(p, c){
   const cp = cap(p.r, c), sugg = Math.min(p.mkt, cp||1);
   return `<div class="act">
     ${termometro(p, cp, sugg)}
+    <div class="decisionMini">
+      <span><b>Massimo per te</b> <strong>${p.myMax??cp}</strong></span>
+      <span class="decisionState ${p.myAction==='take'?'raise':p.myAction==='leave'?'leave':'watch'}">${p.myActionLabel||'IN MEDIA'}</span>
+    </div>
     <span class="lbl">Pagato</span>
     <input type="number" inputmode="numeric" id="pr" value="${sugg}" min="1" max="${c.tot.resid}">
     <button class="ok" data-buy="${p.id}">Preso io</button>
@@ -1393,7 +1603,6 @@ function termometro(p, cp, val){
       <span style="left:${finMax}%">${p.max}</span>
       ${cp < p.max*1.3 ? `<span class="r" style="left:${finCap}%">tetto ${cp}</span>` : ''}
     </div>
-    <div class="trkmsg" id="trkmsg"></div>
   </div>`;
 }
 
@@ -1403,14 +1612,18 @@ function aggiornaTermometro(){
   const val = Math.max(0, +($('#pr')||{}).value || 0);
   const fondo = Math.max(p.max, cp, val) * 1.12;
   const now = $('#trknow');
-  now.style.left = Math.max(0, Math.min(100, val/fondo*100)) + '%';
-  now.classList.toggle('over', val > cp);
-  let m;
-  if(val > cp)         m = `<b>${val}</b> sfonda il tetto di ${cp}: non ti resterebbe da coprire gli altri slot.`;
-  else if(val > p.max) m = `<b>${val}</b> è sopra il massimo consigliato di ${p.max}.`;
-  else if(val >= p.min)m = `<b>${val}</b> è dentro il range consigliato.`;
-  else                 m = `<b>${val}</b> è sotto il minimo: se lo prendi a questa cifra è un affare.`;
-  $('#trkmsg').innerHTML = m;
+  if(now) {
+    now.style.left = Math.max(0, Math.min(100, val/fondo*100)) + '%';
+    now.classList.toggle('over', val > cp);
+  }
+  const state = document.querySelector('.decisionState');
+  if(!state) return;
+  let label, cls;
+  if(val > cp || val > p.max){ label='LASCIA'; cls='leave'; }
+  else if(val >= p.min){ label='IN MEDIA'; cls='watch'; }
+  else { label='PRENDI'; cls='take'; }
+  state.textContent=label;
+  state.className='decisionState '+cls;
 }
 
 /* ---------- rosa ---------- */
@@ -1611,6 +1824,13 @@ function apriAssegnazione(id, prezzo){
   $('#assignSheet').classList.add('on');
 }
 function chiudiAssegnazione(){ S.pendingAssign=null; $('#assignSheet').classList.remove('on'); }
+$('#openAnalysis').addEventListener('click', ()=>{ drawAnalysis(); $('#analysisSheet').classList.add('on'); });
+$('#closeAnalysis').addEventListener('click', ()=>$('#analysisSheet').classList.remove('on'));
+$('#closeAnalysisTop').addEventListener('click', ()=>$('#analysisSheet').classList.remove('on'));
+$('#refreshAnalysis').addEventListener('click', drawAnalysis);
+$('#simulateTeam').addEventListener('click', simulaRosa);
+$('#analysisSheet').addEventListener('click', e=>{ if(e.target.id==='analysisSheet') $('#analysisSheet').classList.remove('on'); });
+
 $('#openTeams').addEventListener('click', apriTeams);
 $('#teamsNsq').addEventListener('change', e=>{
   LG.squadre=+e.target.value;
@@ -1749,6 +1969,29 @@ $('#opzbtn').addEventListener('click', e=>{
   e.currentTarget.setAttribute('aria-expanded', on);
 });
 
+/* ---------- menu hamburger mobile ---------- */
+const mobileMenuBtn=$('#mobileMenuBtn'), mobileMenu=$('#mobileMenu');
+function chiudiMobileMenu(){
+  mobileMenu.classList.remove('on');
+  mobileMenu.setAttribute('aria-hidden','true');
+  mobileMenuBtn.setAttribute('aria-expanded','false');
+}
+mobileMenuBtn.addEventListener('click', e=>{
+  const on=mobileMenu.classList.toggle('on');
+  mobileMenu.setAttribute('aria-hidden',String(!on));
+  e.currentTarget.setAttribute('aria-expanded',String(on));
+});
+mobileMenu.addEventListener('click', e=>{
+  const b=e.target.closest('[data-mobile-action]'); if(!b) return;
+  const a=b.dataset.mobileAction;
+  chiudiMobileMenu();
+  if(a==='filters') $('#opzbtn').click();
+  if(a==='teams') $('#openTeams').click();
+  if(a==='analysis') $('#openAnalysis').click();
+  if(a==='data') $('#dati').click();
+  if(a==='reset') $('#reset').click();
+});
+
 /* se si passa al formato PC la rosa torna nella colonna: il velo va tolto */
 let ultimoTipo = tipoSchermo();
 function tipoSchermo(){
@@ -1761,7 +2004,8 @@ function adatta(){
   if(t !== ultimoTipo){
     ultimoTipo = t;
     if(t === 'pc') rosaApri(false);
-    if(t !== 'telefono') $('#opz').classList.remove('on');
+    if(t !== 'telefono') chiudiMobileMenu();
+    if(t === 'telefono') $('#opz').classList.remove('on');
     $('#top').classList.toggle('chiusa', t === 'telefono');
     $('#apriTop').setAttribute('aria-expanded', t !== 'telefono');
     redraw();
@@ -1969,6 +2213,7 @@ function redraw(){
   const c = conti();
   $('#fab').textContent = `Rosa ${c.tot.n}/${c.tot.slot}`;
   if($('#teamsSheet')?.classList.contains('on')) drawTeams();
+  if($('#analysisSheet')?.classList.contains('on')) drawAnalysis();
 }
 
 calcolaPrezzi(); redraw();

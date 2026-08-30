@@ -199,8 +199,6 @@ button{cursor:pointer}
 .trklab span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 .trklab span.g{color:var(--gold);font-weight:700}
 .trklab span.r{color:var(--neg)}
-.trkmsg{font-family:var(--mono);font-size:11px;margin-top:6px;color:var(--mut)}
-.trkmsg b{color:var(--txt)}
 .big small .sm{display:none}
 .big em{font-style:normal;font-size:14px;font-weight:500;color:var(--mut);letter-spacing:-.01em}
 .extra{display:none;flex:none;width:118px;text-align:right;font-family:var(--mono);font-size:11px;
@@ -500,7 +498,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,label.chk:focus-wi
   .act .hint{font-size:13px;line-height:1.55}
   .trkbar{height:30px}
   .trklab{font-size:11px;height:15px}
-  .trkmsg{font-size:12.5px}
 
   /* --- fogli --- */
   .sheet{padding:0;align-items:flex-end}
@@ -605,8 +602,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,label.chk:focus-wi
   .fil{padding-bottom:10px}
   .segbar{padding:0 20px 12px}
   .seg button{min-width:52px}
-  .opzbtn{display:none}
-  #opz{display:grid}
+  .opzbtn{display:block}
+  #opz{display:none}
+  #opz.on{display:grid}
   .vd .txt{display:inline}
   .top{padding:12px 20px 10px}
   .fil{padding:12px 20px}
@@ -1019,4 +1017,75 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
   .segbarInner .seg button{min-width:54px;}
   .segbarInner .fil{max-width:390px;}
   .segbarInner #q{padding:10px 13px;font-size:15px;}
+}
+
+/* ---------- Analisi asta / decision support ---------- */
+.analysisBtn{font-weight:800}
+.analysisCard{width:min(980px,94vw)!important;max-width:980px}
+.analysisHead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.analysisHead .close{margin:0;padding:8px 12px}
+.analysisAlerts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}
+.analysisAlert{border:1px solid var(--line);border-left:4px solid var(--mut);border-radius:10px;padding:10px 12px;background:var(--surf2);font-size:13px;font-weight:700}
+.analysisAlert.warn{border-left-color:#B24E4E}.analysisAlert.good{border-left-color:#2E7D5B}.analysisAlert.scarcity{border-left-color:#B07A25}.analysisAlert.ok{border-left-color:#687078}
+.analysisRoles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.analysisRole{border:1px solid var(--line);border-top:4px solid var(--mut);border-radius:10px;padding:11px;background:var(--surf)}
+.analysisRole.role-P{border-top-color:var(--P)}.analysisRole.role-D{border-top-color:var(--D)}.analysisRole.role-C{border-top-color:var(--C)}.analysisRole.role-A{border-top-color:var(--A)}
+.analysisRoleHead{display:flex;justify-content:space-between;align-items:center;font-size:17px;margin-bottom:9px}
+.analysisRoleHead b{color:inherit}.analysisRole.role-P .analysisRoleHead b{color:var(--P)}.analysisRole.role-D .analysisRoleHead b{color:var(--D)}.analysisRole.role-C .analysisRoleHead b{color:var(--C)}.analysisRole.role-A .analysisRoleHead b{color:var(--A)}
+.analysisRoleHead span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:900;color:var(--mut)}
+.analysisRoleStats{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:var(--mut)}
+.analysisRoleStats strong{display:block;color:var(--txt);font-size:16px;margin-top:1px}
+.analysisActions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.simulationResult{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.simulationResult h4{margin:0 0 4px;font-size:16px}.simulationResult p{margin:0 0 10px;color:var(--mut);font-size:12px}
+.simGroup{margin-top:9px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surf)}
+.simGroup h4{padding:8px 10px;margin:0;background:var(--surf2)}
+.simGroup h4.role-P{color:var(--P)}.simGroup h4.role-D{color:var(--D)}.simGroup h4.role-C{color:var(--C)}.simGroup h4.role-A{color:var(--A)}
+.simGroup>div{display:flex;justify-content:space-between;padding:7px 10px;border-top:1px solid var(--line);font-size:13px}.simGroup b{font-family:var(--mono)}
+.decisionMini{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:10px;background:var(--surf2);border:1px solid var(--line);margin:2px 0 4px}
+.decisionMini span:first-child{font-size:12px;color:var(--mut)}.decisionMini strong{font-family:var(--mono);font-size:18px;color:var(--txt);margin-left:5px}
+.decisionState{font-size:11px;font-weight:900;letter-spacing:.05em;padding:5px 8px;border-radius:7px}.decisionState.raise,.decisionState.take{background:#e8f1ea;color:#2E7D5B}.decisionState.leave{background:#f6e9e9;color:#B24E4E}.decisionState.watch{background:#f1f1ef;color:#555}
+@media(max-width:700px){.analysisAlerts,.analysisRoles{grid-template-columns:1fr}.analysisActions{justify-content:stretch}.analysisActions button{flex:1}.analysisHead{gap:8px}}
+
+/* V27: mobile action buttons and robust overflow prevention */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { max-width:100%; overflow-x:hidden; }
+button, input, select, textarea { max-width:100%; }
+@media (max-width:599px){
+  .fabocr,.fabdata{bottom:max(12px,env(safe-area-inset-bottom));}
+  .fabocr{left:max(12px,env(safe-area-inset-left));}
+  .fabdata{left:76px;right:auto;}
+  .fab{right:max(12px,env(safe-area-inset-right));}
+  .analysisActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .analysisActions button{width:100%;min-height:48px;}
+  .teamsToolbar,.teamsGrid,.analysisAlerts,.analysisRoles{min-width:0;}
+  .teamCard,.analysisRole,.analysisAlert,.simulationResult{min-width:0;overflow-wrap:anywhere;}
+}
+@media (max-width:389px){
+  .fabdata{left:72px;}
+  .analysisActions{grid-template-columns:1fr;}
+}
+
+/* V28 - menu rapido mobile */
+.hamburger{display:none;background:var(--txt);color:#fff;border:0;border-radius:10px;
+  min-width:42px;min-height:40px;padding:8px 10px;font-size:19px;line-height:1;font-weight:700}
+.hamburger[aria-expanded="true"]{background:var(--gold)}
+.mobileMenu{display:none}
+.simulationSummary{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:11px 12px;margin-bottom:10px;
+  background:var(--surf2);border:1px solid var(--line);border-radius:10px}
+.simulationSummary b{font-size:15px}.simulationSummary span{color:var(--mut);font-size:12px;text-align:right}.simulationSummary strong{grid-column:1/-1;font-size:17px}
+.simulationEmpty{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surf2);color:var(--mut);font-size:13px}
+.simGroup h4 span{float:right;font-family:var(--mono);font-size:11px;color:var(--mut);font-weight:700}
+
+@media(max-width:599px){
+  .tline>.apri,.tline>.opzbtn,.tline>.teamsBtn,.tline>.analysisBtn,.tline>#dati,.tline>#reset{display:none!important}
+  .tline>.hamburger{display:inline-flex;align-items:center;justify-content:center;margin-left:auto;flex:none}
+  .mobileMenu{display:none;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:7px 0 2px}
+  .mobileMenu.on{display:grid}
+  .mobileMenu button{min-width:0;min-height:42px;padding:8px 3px;border:1px solid var(--line);border-radius:9px;background:var(--surf);color:var(--txt);font-size:11.5px;font-weight:750;white-space:nowrap}
+  .mobileMenu button:active{background:var(--g3)}
+  .simulationSummary{grid-template-columns:1fr;gap:3px}
+  .simulationSummary span{text-align:left}
+  .simulationSummary strong{font-size:16px;margin-top:3px}
+  .simGroup>div{min-width:0;gap:8px}.simGroup>div span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
