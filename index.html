@@ -12,6 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="testa" id="testa">
@@ -24,6 +25,7 @@
     <span class="tspace"></span>
     <button class="apri" id="apriTop" aria-expanded="false">Reparti</button>
     <button class="opzbtn" id="opzbtn" aria-expanded="false">Filtri</button>
+    <button class="reset teamsBtn" id="openTeams">Squadre</button>
     <button class="reset" id="dati">Dati</button>
     <button class="reset" id="reset">Azzera</button>
   </div>
@@ -34,18 +36,19 @@
   <div class="roles" id="roles"></div>
 </div>
 
-<div class="fil">
-  <input type="text" id="q" placeholder="Cerca giocatore o squadra…" autocomplete="off"
-    autocorrect="off" autocapitalize="off" enterkeyhint="search">
-</div>
-</div>
-
 <div class="segbar">
-  <div class="seg" id="seg">
-    <button data-r="ALL" aria-pressed="true">Tutti</button>
-    <button data-r="P">P</button><button data-r="D">D</button>
-    <button data-r="C">C</button><button data-r="A">A</button>
+  <div class="segbarInner">
+    <div class="seg" id="seg">
+      <button data-r="ALL" aria-pressed="true">Tutti</button>
+      <button data-r="P">P</button><button data-r="D">D</button>
+      <button data-r="C">C</button><button data-r="A">A</button>
+    </div>
+    <div class="fil">
+      <input type="text" id="q" placeholder="Cerca giocatore o squadra…" autocomplete="off"
+        autocorrect="off" autocapitalize="off" enterkeyhint="search">
+    </div>
   </div>
+</div>
 </div>
 
 <div id="opz">
@@ -73,7 +76,6 @@
     <option value="pct">titolarità</option>
     <option value="n">nome</option>
   </select></label>
-  <label class="fld"><u>Numero di squadre<button class="qm" data-spiega="nsq" aria-label="Cosa fa: Numero di squadre">?</button></u><select id="nsq"></select></label>
   <label class="fld"><u>Ripartizione budget<button class="qm" data-spiega="rip" aria-label="Cosa fa: Ripartizione budget">?</button></u><select id="rip">
     <option value="lega">la mia lega</option>
     <option value="media">media Fantacalcio.it</option>
@@ -163,10 +165,10 @@
 
 <div class="sheet" id="rosaDataSheet"><div class="card">
   <h3>Carica la rosa dei giocatori</h3>
-  <div class="sub">Carica un <b>CSV/TXT</b> con <b>Nome</b>, <b>Squadra</b>, <b>R/Ruolo</b> e, se disponibili, <b>Qt.A</b> e <b>FVM</b>. Puoi anche caricare un <b>JSON</b> con una proprietà <b>players</b>. I giocatori già presenti mantengono lo storico.</div>
+  <div class="sub">Carica un <b>CSV/TXT/Excel</b> con <b>Nome</b>, <b>Squadra</b>, <b>R/Ruolo</b> e, se disponibili, <b>Qt.A</b> e <b>FVM</b>. Puoi anche caricare un <b>JSON</b> con una proprietà <b>players</b>. I giocatori già presenti mantengono lo storico.</div>
   <div class="imp">
     <section><h4>Carica un file</h4><div class="riga">
-      <label class="file">👥 Scegli CSV / TXT / JSON<input type="file" accept=".csv,.txt,.json,text/csv,application/json" id="rosaFile"></label>
+      <label class="file">👥 Scegli CSV / TXT / JSON / Excel<input type="file" accept=".csv,.txt,.json,.xlsx,.xls,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" id="rosaFile"></label>
       <span class="esito" id="esRosa"></span></div></section>
     <section><h4>Incolla i dati</h4>
       <textarea id="txtRosa" placeholder="R&#9;Nome&#9;Squadra&#9;Qt.A&#9;FVM&#10;A&#9;Martinez L.&#9;Inter&#9;35&#9;370"></textarea>
@@ -177,6 +179,33 @@
     </section>
   </div>
   <button class="close" id="closeRosaData">Chiudi</button>
+</div></div>
+
+
+<div class="sheet" id="teamsSheet"><div class="card teamsCard">
+  <div class="teamsToolbar">
+    <label><span>Numero di squadre</span><select id="teamsNsq"></select></label>
+    <label><span>Nomi squadre</span><select id="teamsNameSel"></select></label>
+    <div class="teamNameEdit"><input id="teamsNameInput" type="text" maxlength="40" placeholder="Nome squadra"><button class="ok" id="teamsNameSave" type="button">Salva</button></div>
+  </div>
+  <h3>Squadre e giocatori acquistati</h3>
+  <div class="sub">Situazione aggiornata dell'asta: budget residuo, slot liberi e giocatori acquistati per ogni partecipante.</div>
+  <div id="teamsGrid" class="teamsGrid"></div>
+  <button class="close" id="closeTeams">Chiudi</button>
+</div></div>
+
+<div class="sheet" id="teamNamesSheet"><div class="card">
+  <h3>Nomi delle squadre</h3>
+  <div class="sub">Personalizza i nomi degli 8 partecipanti. Il primo nome è la tua squadra; gli altri vengono usati quando assegni un giocatore a “Ad altri”.</div>
+  <div id="teamNamesForm" class="teamNamesForm"></div>
+  <div class="riga teamNamesActions"><button class="ok" id="teamNamesSave">Salva nomi</button><button id="teamNamesCancel">Annulla</button></div>
+</div></div>
+
+<div class="sheet" id="assignSheet"><div class="card sm">
+  <h3>Assegna a una squadra</h3>
+  <div class="sub" id="assignPlayerHint"></div>
+  <div id="assignTeams" class="assignTeams"></div>
+  <button class="close" id="assignCancel">Annulla</button>
 </div></div>
 
 <div class="sheet" id="ocrSheet"><div class="card">
@@ -213,8 +242,22 @@ const n1 = v => v===null||v===undefined ? '–' : (+v).toFixed(1);
 // veri: prezzi realmente pagati osservati durante questa asta (i miei acquisti,
 // o quelli letti con la fotocamera) — servono a ricalibrare il costo atteso
 // di chi resta, non solo a segnare chi è assegnato.
-let S = {mie:{}, altrui:{}, veri:{}, open:null, ruolo:'ALL', q:'', taken:false,
-         sq:'ALL', vd:'ALL', tit:'ALL', ord:'mkt', bud:false};
+function nomiSquadreDefault(n){
+  const tot = Math.max(1, Number(n)||8);
+  return Array.from({length:tot}, (_,i)=> i===0 ? 'La mia squadra' : `Squadra ${i+1}`);
+}
+function normalizzaNomiSquadre(nomi, n){
+  const base = nomiSquadreDefault(n);
+  return Array.from({length:Math.max(1, Number(n)||8)}, (_,i)=>{
+    const v = Array.isArray(nomi) ? String(nomi[i] ?? '').trim() : '';
+    return v || base[i];
+  });
+}
+const NOMI_SQUADRE_KEY = 'asta2026_team_names';
+let nomiSalvati = null;
+try { nomiSalvati = JSON.parse(localStorage.getItem(NOMI_SQUADRE_KEY)||'null'); } catch(_){}
+let S = {mie:{}, altrui:{}, altruiTeam:{}, veri:{}, open:null, ruolo:'ALL', q:'', taken:false,
+         sq:'ALL', vd:'ALL', tit:'ALL', ord:'mkt', bud:false, squadraNomi:normalizzaNomiSquadre(nomiSalvati, LG.squadre)};
 const st = S; st.rip = 'lega'; st.usaGer = true;
 
 
@@ -547,6 +590,53 @@ function importaRosaDaTesto(testo, nomeFile=''){
   }));
 }
 
+/* ---------- import Excel / CSV / TXT / JSON ----------
+   Gli XLSX sono binari: vengono letti con SheetJS e convertiti nella stessa
+   struttura usata dall'importatore testuale. */
+function normalizzaIntestazioneExcel(v){
+  return String(v ?? '').trim().normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/\s+/g,' ');
+}
+function importaXlsx(file){
+  if(typeof XLSX==='undefined') throw new Error('Libreria Excel non caricata.');
+  return file.arrayBuffer().then(buf=>{
+    const wb = XLSX.read(buf,{type:'array'});
+    const nomeFoglio = wb.SheetNames[0];
+    const ws = wb.Sheets[nomeFoglio];
+    const righe = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    if(!righe.length) throw new Error('Il file Excel è vuoto.');
+
+    let hi=-1;
+    for(let i=0;i<Math.min(righe.length,20);i++){
+      const hdr=righe[i].map(normalizzaIntestazioneExcel);
+      if(hdr.some(c=>c==='nome'||c==='nome giocatore'||c==='giocatore')){
+        hi=i; break;
+      }
+    }
+    if(hi<0) throw new Error('Non trovo la colonna "Nome" nell’intestazione Excel.');
+
+    const hdr=righe[hi].map(normalizzaIntestazioneExcel);
+    const idx=(pred)=>hdr.findIndex(pred);
+    const iN=idx(c=>c==='nome'||c==='nome giocatore'||c==='giocatore');
+    const iR=idx(c=>c==='r'||c==='r.'||c==='ruolo');
+    const iS=idx(c=>c==='sq.'||c==='sq'||c.startsWith('squadra'));
+    const iQ=idx(c=>c.includes('qt.a')||c==='qta'||c==='qt'||c==='quot.'||c.includes('quotazione'));
+    const iF=idx(c=>c==='fvm'||(c.includes('fvm')&&!c.includes('1000')));
+    const iF1000=idx(c=>c.includes('fvm/1000')||c.includes('fvm 1000'));
+
+    const validi = righe.slice(hi+1).map(r=>({
+      n: String(r[iN]??'').trim(),
+      r: iR>=0 ? String(r[iR]??'').trim() : 'C',
+      sq: iS>=0 ? String(r[iS]??'').trim() : '?',
+      qt: iQ>=0 ? numero(r[iQ]) : null,
+      fvm: iF>=0 ? numero(r[iF]) : (iF1000>=0 ? numero(r[iF1000]) : null)
+    })).filter(x=>x.n);
+
+    if(validi.length<20) throw new Error(`Ho riconosciuto solo ${validi.length} giocatori nel file Excel.`);
+    return validi;
+  });
+}
+
 $('#fabdata').addEventListener('click', ()=>{
   $('#rosaDataSheet').classList.add('on');
 });
@@ -561,7 +651,7 @@ $('#rosaDataSheet').addEventListener('click', e=>{
   }
 });
 
-$('#rosaFile').addEventListener('change', e=>{
+$('#rosaFile').addEventListener('change', async e=>{
   const file = e.target.files[0];
   if(!file) return;
 
@@ -569,28 +659,27 @@ $('#rosaFile').addEventListener('change', e=>{
   esito.textContent = 'Caricamento…';
   esito.className = 'esito';
 
-  const reader = new FileReader();
-
-  reader.onload = ()=>{
-    try{
-      const nuovi = importaRosaDaTesto(reader.result, file.name);
-      const n = aggiornaDatasetGiocatori(nuovi);
-
-      esito.textContent = `${n} giocatori caricati correttamente.`;
-      esito.className = 'esito';
-
-    }catch(err){
-      esito.textContent = err.message;
-      esito.className = 'esito err';
+  try{
+    let nuovi;
+    const nome = file.name.toLowerCase();
+    if(nome.endsWith('.xlsx') || nome.endsWith('.xls')){
+      nuovi = await importaXlsx(file);
+    }else{
+      const reader = new FileReader();
+      const testo = await new Promise((resolve,reject)=>{
+        reader.onload=()=>resolve(reader.result);
+        reader.onerror=()=>reject(new Error('Impossibile leggere il file.'));
+        reader.readAsText(file);
+      });
+      nuovi = importaRosaDaTesto(testo,file.name);
     }
-  };
-
-  reader.onerror = ()=>{
-    esito.textContent = 'Impossibile leggere il file.';
+    const n = aggiornaDatasetGiocatori(nuovi);
+    esito.textContent = `${n} giocatori caricati correttamente.`;
+    esito.className = 'esito';
+  }catch(err){
+    esito.textContent = err.message || 'File non leggibile.';
     esito.className = 'esito err';
-  };
-
-  reader.readAsText(file);
+  }
 });
 
 $('#rosaApplica').addEventListener('click', ()=>{
@@ -615,6 +704,46 @@ $('#rosaApplica').addEventListener('click', ()=>{
     esito.className = 'esito err';
   }
 });
+
+$('#rosaOnline').addEventListener('click', async ()=>{
+  const esito=$('#rosaFonte');
+  const btn=$('#rosaOnline');
+  const old=btn.textContent;
+  btn.disabled=true; btn.textContent='Aggiornamento…';
+  try{
+    const res=await fetch('data/players.json',{cache:'no-store'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const obj=await res.json();
+    const nuovi=Array.isArray(obj)?obj:(Array.isArray(obj.players)?obj.players:null);
+    if(!nuovi) throw new Error('Dataset online non valido.');
+    const n=aggiornaDatasetGiocatori(nuovi);
+    esito.innerHTML=`Dataset online aggiornato: <b>${n}</b> giocatori.`;
+  }catch(err){
+    esito.textContent='Impossibile ricaricare il dataset online: '+(err.message||'errore');
+  }finally{
+    btn.disabled=false; btn.textContent=old;
+  }
+});
+
+$('#rosaExport').addEventListener('click', ()=>{
+  const blob=new Blob([JSON.stringify({players:P},null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='players_export.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+$('#rosaReset').addEventListener('click', ()=>{
+  if(!confirm('Ripristinare i dati predefiniti incorporati nell’app?')) return;
+  P.length=0;
+  DATA.players.forEach(p=>P.push(Object.assign({},p)));
+  Object.keys(byId).forEach(k=>delete byId[k]);
+  P.forEach(p=>byId[p.id]=p);
+  calcolaPrezzi(); popolaDatalist(); redraw();
+  $('#rosaFonte').textContent='Usati i dati predefiniti incorporati nell’app.';
+});
+
 $('#ocrSheet').addEventListener('click', e=>{
   if(e.target.id==='ocrSheet') chiudiOcr();
 });
@@ -634,16 +763,20 @@ function fattoreGerarchia(p){
   return Math.min(1.05, Math.max(0.5, 0.5 + 0.5*(p.pct/90)));
 }
 
-$('#nsq').innerHTML = [6,8,10,12,14,16,18,20]
-  .map(n=>'<option value="'+n+'"'+(n===LG.squadre?' selected':'')+'>'+n+' squadre</option>').join('');
-
-function calcolaPrezzi(){
+function calcolaPrezzi(mostraTrend=false){
   const quote = st.rip==='media' ? DATA.quote_media : DATA.quote;
-  P.forEach(p=>{ p.mkt = 1; p.fatt = 1; });
+  const mktPrecedenti = new Map(P.map(p=>[p.id, Number(p.mkt)||0]));
+  P.forEach(p=>{
+    p.mkt = 1; p.fatt = 1; p.attesoPrezzo = null;
+    p.astaCorr = null; p.astaCorrFonte = null;
+    p.trend = null;
+  });
+
   for(const r of ORD){
     const pool = P.filter(x=>x.r===r);
     pool.forEach(x=>{ x.grezzo = x.p1000 > 0 ? x.p1000
       : DATA.curva[r].a * Math.pow(Math.max(x.fvm||0,1), DATA.curva[r].b); });
+
     const n = Math.min(LG.squadre*LG.slot[r], pool.length);
     const dentro = pool.slice().sort((a,b)=>b.grezzo-a.grezzo).slice(0,n);
     const somma = dentro.reduce((a,x)=>a+x.grezzo,0);
@@ -666,16 +799,26 @@ function calcolaPrezzi(){
       });
     }
   }
+
+  // Salviamo il valore/prezzo di riferimento PRIMA di applicare l'andamento
+  // della singola asta. In questo modo i correttivi live non si auto-alimentano.
   P.forEach(p=>{
-    p.val = Math.max(1, Math.round(p.mkt*p.fatt));
+    p.baseMkt = p.mkt;
+    p.baseVal = Math.max(1, Math.round(p.mkt*p.fatt));
+    p.val = p.baseVal;
     p.min = Math.max(1, Math.round(p.val*0.85));
     p.max = Math.max(1, Math.round(p.val*1.15));
     p.marg = p.val - p.mkt;
-    p.vd = p.mkt<=1 ? 'riempitivo'
-         : p.fatt>=1.12 ? 'spingi'
-         : p.fatt<=0.89 ? 'lascia' : 'prezzo giusto';
   });
+
   ricalibraConAsta();
+  if(mostraTrend){
+    for(const p of P){
+      if(S.mie[p.id]!==undefined || S.altrui[p.id]!==undefined) continue;
+      const prima=mktPrecedenti.get(p.id)||0, dopo=Number(p.mkt)||0;
+      p.trend = prima<=0 ? null : (dopo>prima ? 'up' : dopo<prima ? 'down' : 'same');
+    }
+  }
 }
 
 /* ---------- ricalibrazione dal vivo ----------
@@ -691,44 +834,172 @@ function calcolaPrezzi(){
    qualsiasi ruolo) — così basta leggere UN solo giocatore, in un'asta appena
    iniziata, perché il costo atteso di TUTTI i giocatori residui si avvicini
    a come sta andando davvero l'asta, e non solo quello del suo ruolo. */
+function nomeSquadra(idx){ return S.squadraNomi?.[Number(idx)] || `Squadra ${Number(idx)+1}`; }
+function prezzoAltrui(id){ const v=Number(S.altrui[id]); return Number.isFinite(v) && v>0 ? v : 0; }
+function teamDiGiocatore(id){
+  const t = Number(S.altruiTeam?.[id]);
+  return Number.isInteger(t) && t>0 && t<LG.squadre ? t : null;
+}
+function escHtml(v){ return String(v??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function reali(){
   const out = Object.assign({}, S.veri);
   for(const id in S.mie) if(out[id]==null) out[id] = S.mie[id];
   return out;
 }
+function limite(v, lo, hi){ return Math.min(hi, Math.max(lo, v)); }
+
+function datiCompetizioneRuolo(ru){
+  const altri = Math.max(0, LG.squadre-1);
+  const teamStats = Array.from({length: altri}, (_,i)=>({
+    team:i+1, speso:0, totali:0, ruolo:0
+  }));
+
+  for(const id in S.altrui){
+    const p=byId[id]; if(!p) continue;
+    const t=teamDiGiocatore(id); if(t==null) continue;
+    const stt=teamStats[t-1]; if(!stt) continue;
+    const v=prezzoAltrui(id);
+    stt.speso += v;
+    stt.totali++;
+    if(p.r===ru) stt.ruolo++;
+  }
+
+  // Vecchi salvataggi senza squadra assegnata: li teniamo nel monte crediti
+  // generale, ma non li attribuiamo a un singolo concorrente.
+  let spesiNonAttribuiti=0, compratiNonAttribuiti=0;
+  for(const id in S.altrui){
+    if(teamDiGiocatore(id)!=null) continue;
+    const p=byId[id]; if(!p || p.r!==ru) continue;
+    compratiNonAttribuiti++;
+    spesiNonAttribuiti += prezzoAltrui(id);
+  }
+
+  const baseSlot = altri * LG.slot[ru];
+  const comprati = teamStats.reduce((a,t)=>a+t.ruolo,0) + compratiNonAttribuiti;
+  const spesi = teamStats.reduce((a,t)=>a+t.speso,0) + spesiNonAttribuiti;
+
+  let residuoAltri = altri * LG.budget;
+  for(const id in S.altrui){
+    const v=prezzoAltrui(id); if(v>1) residuoAltri -= v;
+  }
+  residuoAltri=Math.max(0,residuoAltri);
+
+  const slotRuolo=Math.max(0,baseSlot-comprati);
+  let slotAltriRuoli=0;
+  ORD.filter(r=>r!==ru).forEach(r=>{
+    const base=altri*LG.slot[r];
+    let c=0;
+    for(const id in S.altrui){ const p=byId[id]; if(p&&p.r===r)c++; }
+    slotAltriRuoli += Math.max(0,base-c);
+  });
+
+  const slotTotaliAltriResidui=Math.max(0,slotRuolo+slotAltriRuoli);
+  const mediaInizialePerSlot=LG.budget/ORD.reduce((a,r)=>a+LG.slot[r],0);
+  const creditiPerSlotResiduo=slotTotaliAltriResidui>0 ? residuoAltri/slotTotaliAltriResidui : mediaInizialePerSlot;
+  const pressioneBudget=mediaInizialePerSlot>0
+    ? limite(creditiPerSlotResiduo/mediaInizialePerSlot,0.70,1.35) : 1;
+
+  const totaleSlotSquadra=ORD.reduce((a,r)=>a+LG.slot[r],0);
+  const quotaRuoloResidua=slotTotaliAltriResidui>0 ? slotRuolo/slotTotaliAltriResidui : 0;
+  const quotaRuoloIniziale=totaleSlotSquadra>0 ? LG.slot[ru]/totaleSlotSquadra : 0;
+  const pressioneRuolo=quotaRuoloIniziale>0
+    ? limite(Math.sqrt(quotaRuoloResidua/quotaRuoloIniziale||1),0.85,1.15) : 1;
+
+  const pool=P.filter(p=>p.r===ru);
+  const dentro=pool.slice().sort((a,b)=>(b.grezzo||0)-(a.grezzo||0))
+    .slice(0,Math.min(LG.squadre*LG.slot[ru],pool.length));
+  const premiumRimasti=dentro.filter(p=>S.mie[p.id]===undefined&&S.altrui[p.id]===undefined).length;
+
+  const mieiDaComprare=Math.max(0,LG.slot[ru]-Object.keys(S.mie).filter(id=>byId[id]?.r===ru).length);
+  const domandaResidua=slotRuolo+mieiDaComprare;
+  const shortage=premiumRimasti<domandaResidua
+    ? 1+((domandaResidua-premiumRimasti)/Math.max(1,domandaResidua))*0.22 : 1;
+
+  // La pressione competitiva per ruolo ora considera anche i singoli concorrenti:
+  // chi ha molto budget e molti slot dello stesso ruolo pesa di più.
+  const pressioneTeam = altri>0 ? limite(teamStats.reduce((sum,t)=>{
+    const slotMancanti=Math.max(0,LG.slot[ru]-t.ruolo);
+    const budgetResiduo=Math.max(0,LG.budget-t.speso);
+    if(!slotMancanti) return sum;
+    const perSlot=budgetResiduo/slotMancanti;
+    const rapporto=mediaInizialePerSlot>0 ? perSlot/mediaInizialePerSlot : 1;
+    return sum + limite(rapporto,0.65,1.45) * (slotMancanti/LG.slot[ru]);
+  },0)/(altri||1),0.80,1.20) : 1;
+
+  return { mercato:null, pressioneBudget, pressioneRuolo,
+    pressioneTeam, shortage:limite(shortage,1,1.22), slotRuolo, domandaResidua,
+    premiumRimasti, spesi, teamStats };
+}
 function ricalibraConAsta(){
   const r = reali();
-  const media = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
   const perRuolo = {}; ORD.forEach(ru=>perRuolo[ru]=[]);
-  const tutti = [];
+  const tutti=[];
+
+  // Il confronto è sempre contro il baseVal fissato prima dell'asta.
   for(const id in r){
     const p = byId[id];
-    if(!p || p.mkt<=1) continue;
-    const rap = r[id] / p.val;
+    if(!p || p.baseVal<=0) continue;
+    const prezzo = Number(r[id]);
+    if(!Number.isFinite(prezzo) || prezzo<=0) continue;
+    const rap = prezzo / p.baseVal;
     tutti.push(rap);
     if(perRuolo[p.r]) perRuolo[p.r].push(rap);
   }
-  if(!tutti.length) return;
-  const mGlobale = Math.min(1.5, Math.max(0.5, media(tutti)));
-  for(const ru of ORD){
-    const campione = perRuolo[ru];
-    const daRuolo = campione.length>0;
-    const m = Math.min(1.5, Math.max(0.5, daRuolo ? media(campione) : mGlobale));
-    if(Math.abs(m-1) < 0.02) continue;
+
+  const mediaRobusta = arr=>{
+    if(!arr.length) return 1;
+    const v=arr.slice().sort((a,b)=>a-b);
+    // Taglio leggermente gli estremi: un unico top pagato follia non deve
+    // spostare da solo tutta l'asta.
+    const lo=Math.floor(v.length*0.10), hi=Math.ceil(v.length*0.90);
+    const cut=v.slice(lo, Math.max(lo+1,hi));
+    return cut.reduce((a,b)=>a+b,0)/cut.length;
+  };
+
+  const mGlobale=limite(mediaRobusta(tutti),0.65,1.45);
+
+  ORD.forEach(ru=>{
+    const campione=perRuolo[ru];
+    const daRuolo=campione.length>0;
+    // Un singolo prezzo anomalo non deve spostare brutalmente tutto il ruolo.
+    // Il campione viene quindi ristretto verso 1 con una forza che cresce
+    // all'aumentare delle osservazioni. Se il ruolo non ha ancora osservazioni,
+    // il mercato globale entra solo debolmente e aumenta gradualmente con i dati.
+    const rawRuolo=daRuolo?mediaRobusta(campione):1;
+    const pesoRuolo=campione.length ? Math.min(0.85, campione.length/(campione.length+3)) : 0;
+    const pesoGlobale=!campione.length ? Math.min(0.35, tutti.length/(tutti.length+6)) : 0;
+    const mMercato=limite(1 + (rawRuolo-1)*pesoRuolo + (mGlobale-1)*pesoGlobale, 0.65, 1.45);
+    const c=datiCompetizioneRuolo(ru);
+    c.mercato=mMercato;
+
+    const fattoreTotale=limite(mMercato * c.pressioneBudget * c.pressioneRuolo * c.pressioneTeam * c.shortage, 0.55, 1.60);
+
     P.forEach(x=>{
-      if(x.r!==ru || x.mkt<=1 || r[x.id]!=null) return;
-      x.val = Math.max(1, Math.round(x.val * m));
-      x.min = Math.max(1, Math.round(x.val*0.85));
-      x.max = Math.max(1, Math.round(x.val*1.15));
-      x.marg = x.val - x.mkt;
-      const rap = x.val / x.mkt;
-      x.vd = rap>=1.12 ? 'spingi' : rap<=0.89 ? 'lascia' : 'prezzo giusto';
-      x.astaCorr = m;
-      x.astaCorrFonte = daRuolo ? 'ruolo' : 'globale';
+      if(x.r!==ru) return;
+      const assegnato=S.mie[x.id]!==undefined || S.altrui[x.id]!==undefined;
+      if(assegnato || x.baseMkt<=1){
+        x.astaCorr = null;
+        x.astaCorrFonte = null;
+        return;
+      }
+
+      x.attesoPrezzo=Math.max(1,Math.round(x.baseMkt*fattoreTotale));
+      x.mkt=x.attesoPrezzo;
+      // val resta il valore intrinseco/statistico; min-max è invece il range
+      // realistico del prezzo di aggiudicazione nell'asta corrente.
+      x.val=x.baseVal;
+      x.min=Math.max(1,Math.round(x.attesoPrezzo*0.85));
+      x.max=Math.max(x.min,Math.round(x.attesoPrezzo*1.15));
+      x.marg=x.val-x.mkt;
+      x.fatt=x.val/x.mkt;
+      x.vd=x.mkt<=1 ? 'riempitivo'
+        : x.fatt>=1.12 ? 'spingi'
+        : x.fatt<=0.89 ? 'lascia' : 'prezzo giusto';
+      x.astaCorr=fattoreTotale;
+      x.astaCorrFonte=(campione.length||tutti.length)?(daRuolo?'ruolo':'globale'):'nessuno';
     });
-  }
+  });
 }
-$('#nsq').addEventListener('change', e=>{ LG.squadre=+e.target.value; calcolaPrezzi(); redraw(); });
 $('#rip').addEventListener('change', e=>{ st.rip=e.target.value; calcolaPrezzi(); redraw(); });
 $('#usager').addEventListener('change', e=>{ st.usaGer=e.target.checked; calcolaPrezzi(); redraw(); });
 
@@ -1018,6 +1289,13 @@ function segnaSelect(){
   $('#ford').classList.toggle('on', S.ord!=='mkt');
 }
 
+function trendSvg(trend){
+  if(trend==='up') return '<svg class=\"priceTrend trendUp\" viewBox=\"0 0 16 16\" aria-label=\"Prezzo in aumento\" role=\"img\"><path d=\"M8 13V3M4 7l4-4 4 4\"/></svg>';
+  if(trend==='down') return '<svg class=\"priceTrend trendDown\" viewBox=\"0 0 16 16\" aria-label=\"Prezzo in diminuzione\" role=\"img\"><path d=\"M8 3v10M4 9l4 4 4-4\"/></svg>';
+  if(trend==='same') return '<svg class=\"priceTrend trendSame\" viewBox=\"0 0 16 16\" aria-label=\"Prezzo invariato\" role=\"img\"><path d=\"M3 8h10\"/></svg>';
+  return '';
+}
+
 function drawList(){
   const c = conti(), rows = filtra();
   drawChips(rows.length);
@@ -1050,7 +1328,7 @@ function drawList(){
         <span class="who"><b>${p.n}${flag}</b><span>${p.sq} · Fm ${n2(p.fma)} · ${n1(p.pva)} pres.</span></span>
         <span class="rng">${mio
           ? `<b style="color:var(--gold)">${S.mie[p.id]}</b>`
-          : `<b><span class="lo">${p.min}</span>–${tetto}</b>`}<small class="${cls}">${nota}</small></span>
+          : `<b><span class="lo">${p.min}</span>–${tetto}</b>`}<span class="trendWrap">${(!mio&&!altro)?trendSvg(p.trend):''}</span><small class="${cls}">${nota}</small></span>
         <span class="sotto">
           <span class="ger ${p.st?'ko':p.tit?'t':''}" title="${p.st||(p.tit?'titolare':'panchina')}"
           >${p.pct==null?'':`<b>${p.pct}%</b>${p.st?p.st.slice(0,3):p.tit?'tit':'pan'}`}</span>
@@ -1066,7 +1344,9 @@ function drawList(){
 function actionBar(p, c){
   const mio = S.mie[p.id]!==undefined, altro = !!S.altrui[p.id];
   if(mio || altro) return `<div class="act">
-    <span class="lbl">${mio?`nella tua rosa a ${S.mie[p.id]} crediti`:'assegnato a un altro'}</span>
+    <span class="lbl">${mio
+      ? `nella tua rosa a ${S.mie[p.id]} crediti`
+      : `assegnato a ${escHtml(nomeSquadra(teamDiGiocatore(p.id)||1))} a ${S.altrui[p.id]} crediti`}</span>
     <button class="del" data-free="${p.id}">Libera</button>
     <button data-info="${p.id}">Statistiche</button></div>`;
   const cp = cap(p.r, c), sugg = Math.min(p.mkt, cp||1);
@@ -1136,7 +1416,7 @@ function aggiornaTermometro(){
 /* ---------- rosa ---------- */
 function drawRose(){
   const c = conti();
-  $('#rose').innerHTML = `<h2>La mia rosa</h2>` + ORD.map(r=>{
+  $('#rose').innerHTML = `<h2>${escHtml(S.squadraNomi[0]||'La mia squadra')}</h2>` + ORD.map(r=>{
     const g = Object.entries(S.mie).map(([id,pr])=>({p:byId[id],pr}))
       .filter(x=>x.p && x.p.r===r).sort((a,b)=>b.pr-a.pr);
     const liberi = LG.slot[r]-g.length;
@@ -1237,6 +1517,136 @@ list.addEventListener('mouseleave', lpEnd);
 list.addEventListener('contextmenu', e=>{ const r=e.target.closest('.row');
   if(r){ e.preventDefault(); scheda(r.dataset.id); } });
 
+/* ---------- riepilogo squadre ---------- */
+function datiSquadra(idx){
+  const budgetTot = Number(LG.budget)||0;
+  const slotTot = ORD.reduce((a,r)=>a+(Number(LG.slot[r])||0),0);
+  let speso=0;
+  const giocatori=[];
+  for(const p of P){
+    if(idx===0 && S.mie[p.id]!==undefined){
+      const prezzo=Number(S.mie[p.id])||0;
+      speso+=prezzo; giocatori.push({p,prezzo});
+    } else if(idx>0 && Number(S.altruiTeam?.[p.id])===idx){
+      const prezzo=prezzoAltrui(p.id);
+      speso+=prezzo; giocatori.push({p,prezzo});
+    }
+  }
+  const perRuolo={P:0,D:0,C:0,A:0};
+  giocatori.forEach(({p})=>{ if(perRuolo[p.r]!=null) perRuolo[p.r]++; });
+  return {crediti:Math.max(0,budgetTot-speso),slot:Math.max(0,slotTot-giocatori.length),giocatori,perRuolo};
+}
+function drawTeams(){
+  const grid=$('#teamsGrid'); if(!grid) return;
+  grid.innerHTML=S.squadraNomi.slice(0,LG.squadre).map((nome,idx)=>{
+    const d=datiSquadra(idx);
+    const ruoloSummary=ORD.map(r=>`${r} ${d.perRuolo[r]}/${LG.slot[r]}`).join(' · ');
+    const groups=ORD.map(r=>{
+      const arr=d.giocatori.filter(x=>x.p.r===r);
+      if(!arr.length) return '';
+      return `<div class="teamRole role-${r}"><div class="teamRoleTitle">${RN[r]}</div>${arr.map(x=>`<div class="teamPlayer"><span>${escHtml(x.p.n)}</span><b>${x.prezzo}</b></div>`).join('')}</div>`;
+    }).join('');
+    return `<section class="teamCard"><div class="teamHead"><div><h4>${escHtml(nome)}</h4><small>${idx===0?'La tua squadra':'Avversario'}</small></div><div class="teamBudget">${d.crediti}<span> crediti</span></div></div><div class="teamMeta"><span>${d.slot} slot liberi</span><span>${ruoloSummary}</span></div>${groups||'<div class="teamEmpty">Nessun giocatore acquistato</div>'}</section>`;
+  }).join('');
+}
+function aggiornaTeamsControls(){
+  const nsq=$('#teamsNsq'), sel=$('#teamsNameSel'), inp=$('#teamsNameInput');
+  if(!nsq||!sel) return;
+  nsq.innerHTML=[6,8,10,12,14,16,18,20].map(n=>`<option value="${n}" ${n===LG.squadre?'selected':''}>${n}</option>`).join('');
+  const lista=S.squadraNomi.slice(0,LG.squadre);
+  sel.innerHTML=lista.map((nome,i)=>`<option value="${i}">${escHtml(nome)}</option>`).join('');
+  const idx=Math.max(0,Math.min(lista.length-1,Number(sel.value)||0));
+  sel.value=String(idx);
+  if(inp) inp.value=lista[idx]||'';
+}
+function apriTeams(){ aggiornaTeamsControls(); drawTeams(); $('#teamsSheet').classList.add('on'); }
+function chiudiTeams(){ $('#teamsSheet').classList.remove('on'); }
+
+/* ---------- nomi squadre e assegnazione agli avversari ---------- */
+function salvaNomiSquadre(){
+  try { localStorage.setItem(NOMI_SQUADRE_KEY, JSON.stringify(S.squadraNomi)); } catch(_){}
+}
+function drawTeamNamesForm(){
+  $('#teamNamesForm').innerHTML = S.squadraNomi.map((nome,i)=>`
+    <label class="teamNameRow">
+      <span>${i===0?'La tua squadra':`Squadra ${i+1}`}</span>
+      <input type="text" data-team-name="${i}" maxlength="40" value="${escHtml(nome)}">
+    </label>`).join('');
+}
+function apriNomiSquadre(){ drawTeamNamesForm(); $('#teamNamesSheet').classList.add('on'); }
+function chiudiNomiSquadre(){ $('#teamNamesSheet').classList.remove('on'); }
+function riepilogoSquadra(idx){
+  const budgetTot = Number(LG.budget)||0;
+  const slotTot = ORD.reduce((a,r)=>a+(Number(LG.slot[r])||0),0);
+  let speso=0, acquistati=0;
+  const perRuolo={P:0,D:0,C:0,A:0};
+  for(const id in S.altrui){
+    if(Number(S.altruiTeam?.[id])!==idx) continue;
+    const p=byId[id]; if(!p) continue;
+    speso += prezzoAltrui(id);
+    acquistati++;
+    if(perRuolo[p.r]!=null) perRuolo[p.r]++;
+  }
+  const crediti=Math.max(0,budgetTot-speso);
+  const slot=Math.max(0,slotTot-acquistati);
+  return {crediti,slot,perRuolo};
+}
+function apriAssegnazione(id, prezzo){
+  const p=byId[id]; if(!p) return;
+  S.pendingAssign={id,prezzo};
+  $('#assignPlayerHint').innerHTML=`<b>${escHtml(p.n)}</b> · ${prezzo} crediti`;
+  $('#assignTeams').innerHTML=S.squadraNomi.slice(1).map((nome,i)=>{
+    const idx=i+1;
+    const r=riepilogoSquadra(idx);
+    const ruoloTot=Number(LG.slot[p.r])||0;
+    const ruoloMancanti=Math.max(0,ruoloTot-r.perRuolo[p.r]);
+    const piena=r.slot<=0;
+    const disabled=piena?' disabled aria-disabled="true"':'';
+    return `<button type="button" class="teamChoice${piena?' disabled':''}" data-assign-team="${idx}"${disabled}>
+      <b>${escHtml(nome)}</b>
+      <span>${r.crediti} crediti · ${r.slot} slot liberi</span>
+      <small>${p.r}: ${ruoloMancanti} slot ${ruoloMancanti===1?'libero':'liberi'}</small>
+    </button>`;
+  }).join('');
+  $('#assignSheet').classList.add('on');
+}
+function chiudiAssegnazione(){ S.pendingAssign=null; $('#assignSheet').classList.remove('on'); }
+$('#openTeams').addEventListener('click', apriTeams);
+$('#teamsNsq').addEventListener('change', e=>{
+  LG.squadre=+e.target.value;
+  S.squadraNomi=normalizzaNomiSquadre(S.squadraNomi,LG.squadre);
+  Object.keys(S.altruiTeam).forEach(id=>{ const t=Number(S.altruiTeam[id]); if(!(t>0&&t<LG.squadre)) delete S.altruiTeam[id]; });
+  salvaNomiSquadre(); calcolaPrezzi(); redraw(); aggiornaTeamsControls(); drawTeams();
+});
+$('#teamsNameSel').addEventListener('change', e=>{ const i=+e.target.value; $('#teamsNameInput').value=S.squadraNomi[i]||''; });
+$('#teamsNameSave').addEventListener('click', ()=>{ const i=+$('#teamsNameSel').value; const v=$('#teamsNameInput').value.trim(); if(!v) return; S.squadraNomi[i]=v; salvaNomiSquadre(); drawTeams(); $('#teamsNameSel').options[i].text=v; });
+$('#closeTeams').addEventListener('click', chiudiTeams);
+$('#teamsSheet').addEventListener('click', e=>{ if(e.target.id==='teamsSheet') chiudiTeams(); });
+$('#teamNamesSave').addEventListener('click', ()=>{
+  const nomi=S.squadraNomi.slice();
+  $('#teamNamesForm').querySelectorAll('[data-team-name]').forEach(inp=>{ nomi[+inp.dataset.teamName]=inp.value.trim(); });
+  S.squadraNomi=normalizzaNomiSquadre(nomi,LG.squadre);
+  salvaNomiSquadre();
+  chiudiNomiSquadre();
+  redraw();
+});
+$('#teamNamesCancel').addEventListener('click', chiudiNomiSquadre);
+$('#teamNamesSheet').addEventListener('click', e=>{ if(e.target.id==='teamNamesSheet') chiudiNomiSquadre(); });
+$('#assignCancel').addEventListener('click', chiudiAssegnazione);
+$('#assignSheet').addEventListener('click', e=>{
+  if(e.target.id==='assignSheet'){ chiudiAssegnazione(); return; }
+  const b=e.target.closest('[data-assign-team]');
+  if(!b || b.disabled || !S.pendingAssign) return;
+  const id=S.pendingAssign.id, v=S.pendingAssign.prezzo, team=+b.dataset.assignTeam;
+  delete S.mie[id];
+  S.altrui[id]=v;
+  S.altruiTeam[id]=team;
+  S.veri[id]=v;
+  S.open=null;
+  chiudiAssegnazione();
+  calcolaPrezzi(true); redraw();
+});
+
 /* ---------- click ---------- */
 list.addEventListener('click', e=>{
   if(lpFired){ lpFired=false; return; }
@@ -1245,10 +1655,28 @@ list.addEventListener('click', e=>{
     if(b.dataset.info){ scheda(b.dataset.info); return; }
     if(b.dataset.buy){
       const v = Math.max(1, parseInt($('#pr').value)||1);
-      delete S.altrui[b.dataset.buy]; S.mie[b.dataset.buy] = v; S.open=null; redraw(); return;
+      delete S.altrui[b.dataset.buy];
+      S.mie[b.dataset.buy] = v;
+      S.veri[b.dataset.buy] = v;
+      S.open=null;
+      calcolaPrezzi(true);
+      redraw();
+      return;
     }
-    if(b.dataset.other){ delete S.mie[b.dataset.other]; S.altrui[b.dataset.other]=1; S.open=null; redraw(); return; }
-    if(b.dataset.free){ delete S.mie[b.dataset.free]; delete S.altrui[b.dataset.free]; S.open=null; redraw(); return; }
+    if(b.dataset.other){
+      apriAssegnazione(b.dataset.other, Math.max(1, parseInt($('#pr').value)||1));
+      return;
+    }
+    if(b.dataset.free){
+      delete S.mie[b.dataset.free];
+      delete S.altrui[b.dataset.free];
+      delete S.altruiTeam[b.dataset.free];
+      delete S.veri[b.dataset.free];
+      S.open=null;
+      calcolaPrezzi();
+      redraw();
+      return;
+    }
   }
   const row = e.target.closest('.row'); if(!row) return;
   S.open = S.open===row.dataset.id ? null : row.dataset.id;
@@ -1488,12 +1916,20 @@ function ocrApplica(){
     const dest = riga.querySelector('.ocrdest').value;
     const p = trovaGiocatore(nomeVal);
     if(!p || !prezzo){ saltati++; return; }
-    if(dest==='io'){ delete S.altrui[p.id]; S.mie[p.id]=prezzo; }
-    else{ delete S.mie[p.id]; if(S.altrui[p.id]===undefined) S.altrui[p.id]=1; }
+    if(dest==='io'){
+      delete S.altrui[p.id];
+      delete S.altruiTeam[p.id];
+      S.mie[p.id]=prezzo;
+    }else{
+      delete S.mie[p.id];
+      S.altrui[p.id]=prezzo;
+      // L'OCR non identifica la squadra acquirente: resta non attribuito.
+      delete S.altruiTeam[p.id];
+    }
     S.veri[p.id]=prezzo; n++;
   });
   if(!n){ alert('Nessuna riga applicata: seleziona almeno un giocatore riconosciuto con "usa".'); return; }
-  calcolaPrezzi(); redraw(); chiudiOcr();
+  calcolaPrezzi(true); redraw(); chiudiOcr();
   alert(`${n} prezzi registrati e usati per ricalibrare il costo atteso di chi resta.`
     + (saltati?` (${saltati} righe saltate: nome non riconosciuto)`:''));
 }
@@ -1503,8 +1939,8 @@ $('#ocrApplica').addEventListener('click', ocrApplica);
 document.addEventListener('click', e=>{
   if(e.target.id!=='save') return;
   const importati = P.filter(x=>x.p1000>0).map(x=>[x.id, x.p1000]);
-  const blob = new Blob([JSON.stringify({mie:S.mie, altrui:S.altrui, veri:S.veri, p1000:importati,
-    rip:st.rip, squadre:LG.squadre, ts:Date.now()})],
+  const blob = new Blob([JSON.stringify({mie:S.mie, altrui:S.altrui, altruiTeam:S.altruiTeam, veri:S.veri, p1000:importati,
+    rip:st.rip, squadre:LG.squadre, squadraNomi:S.squadraNomi, ts:Date.now()})],
     {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1515,9 +1951,12 @@ document.addEventListener('change', e=>{
   if(e.target.id!=='load' || !e.target.files.length) return;
   const fr = new FileReader();
   fr.onload = () => { try{ const o=JSON.parse(fr.result);
-    S.mie=o.mie||{}; S.altrui=o.altrui||{}; S.veri=o.veri||{}; S.open=null;
+    S.mie=o.mie||{}; S.altrui=o.altrui||{}; S.altruiTeam=o.altruiTeam||{}; S.veri=o.veri||{}; S.open=null;
     if(o.rip) st.rip=o.rip;
     if(o.squadre) LG.squadre=o.squadre;
+    S.squadraNomi=normalizzaNomiSquadre(o.squadraNomi||S.squadraNomi, LG.squadre);
+    Object.keys(S.altruiTeam).forEach(id=>{ const t=Number(S.altruiTeam[id]); if(!(t>0&&t<LG.squadre)) delete S.altruiTeam[id]; });
+    salvaNomiSquadre();
     if(o.p1000){ P.forEach(x=>x.p1000=null);
       o.p1000.forEach(([k,v])=>{ if(byId[k]) byId[k].p1000=v; }); }
     calcolaPrezzi(); redraw();
@@ -1529,9 +1968,10 @@ function redraw(){
   drawTop(); drawList(); drawRose();
   const c = conti();
   $('#fab').textContent = `Rosa ${c.tot.n}/${c.tot.slot}`;
+  if($('#teamsSheet')?.classList.contains('on')) drawTeams();
 }
+
 calcolaPrezzi(); redraw();
 </script>
-<script src="app.js"></script>
 </body>
 </html>
