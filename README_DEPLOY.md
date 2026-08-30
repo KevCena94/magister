@@ -12,3 +12,4 @@ Deploy: pubblicare `index.html`, `style.css` e la cartella `data/`.
 
 
 V41: stabilizzazione della decisione canonica e traccia decisionale unica visibile nel dettaglio giocatore.
+V43: la decisione mostrata nell’hint del dettaglio è dinamica e si aggiorna in base al prezzo inserito nel campo Pagato, come la decisione nel componente.
