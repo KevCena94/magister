@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#F3F3F1">
-  <title>Asta 2026-27 · V31</title>
+  <title>Asta 2026-27</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1029,10 +1029,24 @@ function generaAlert(analysis){
   if(!out.length) out.push({type:'ok',text:'Asta equilibrata: nessun allarme forte in questo momento.'});
   return out.slice(0,6);
 }
+function faseGlobaleAsta(){
+  // La fase dell'asta dipende dal completamento del reparto precedente da parte
+  // di TUTTE le squadre. All'inizio si vendono i P; poi D, C e infine A.
+  const squadre=Math.max(1,Number(LG.squadre)||8);
+  const contaRuolo=(team,r)=>{
+    if(team===0) return Object.keys(S.mie).filter(id=>byId[id]?.r===r).length;
+    return Object.keys(S.altrui).filter(id=>byId[id]?.r===r && teamDiGiocatore(id)===team).length;
+  };
+  const tuttiHanno=(r)=>Array.from({length:squadre},(_,team)=>contaRuolo(team,r)>=Number(LG.slot[r]||0)).every(Boolean);
+  if(!tuttiHanno('P')) return 'P';
+  if(!tuttiHanno('D')) return 'D';
+  if(!tuttiHanno('C')) return 'C';
+  if(!tuttiHanno('A')) return 'A';
+  return null;
+}
 function costruisciPianoStrategico(){
   const c=conti();
-  const totaleSlot=ORD.reduce((a,r)=>a+(Number(LG.slot[r])||0),0);
-  const ruoloBase=totaleSlot>0 ? 1/totaleSlot : 0;
+  const fase=faseGlobaleAsta();
   const ruoli=ORD.map(r=>{
     const cc=datiCompetizioneRuolo(r);
     const mancanti=Math.max(0,Number(c[r].liberi)||0);
@@ -1040,33 +1054,25 @@ function costruisciPianoStrategico(){
     const perSlot=mancanti>0 ? quota/mancanti : 0;
     const pressione=Math.max(0.5,Math.min(1.6,(cc.mercato==null?1:cc.mercato)*cc.pressioneBudget*cc.pressioneRuolo*cc.pressioneTeam*cc.shortage));
     const bisogno=mancanti/(Math.max(1,Number(LG.slot[r])||1));
-    const disponibili=Math.max(1,giocatoriDisponibiliRuolo(r).length);
-    const domandaTotale=Math.max(1,Number(LG.slot[r])||1);
-    // Urgenza di scarsità: aumenta solo quando i giocatori di fascia utile
-    // rimasti sono pochi rispetto agli slot che dobbiamo ancora coprire.
     const qualitaDisponibile=Math.max(1,Number(cc.premiumRimasti)||0);
     const coperturaQualita=qualitaDisponibile/Math.max(1,mancanti);
     const scarsita=limite(1-Math.min(1,coperturaQualita/2),0,1);
-    // Stress di budget del reparto: se la quota disponibile per slot è bassa
-    // rispetto al costo realistico dei giocatori rimasti, la priorità cresce.
     const poolCosti=giocatoriDisponibiliRuolo(r).map(x=>Number(x.mkt)||0).filter(x=>x>1).sort((a,b)=>a-b);
     const campione=poolCosti.slice(0,Math.min(poolCosti.length,Math.max(3,Math.ceil(mancanti*1.5))));
     const costoMinimoRealistico=campione.length ? campione.reduce((a,x)=>a+x,0)/campione.length : 1;
     const stressBudget=limite(costoMinimoRealistico/Math.max(1,perSlot),0,2);
     const stressNorm=limite((stressBudget-0.70)/0.90,0,1);
     const pressioneNorm=limite((pressione-0.85)/0.55,0,1);
-    // La priorità non è legata a un ruolo fisso: combina bisogno, scarsità,
-    // sostenibilità economica e pressione competitiva.
-    const priorita=mancanti>0 ? (
-      0.40*bisogno +
-      0.25*scarsita +
-      0.20*stressNorm +
-      0.15*pressioneNorm
-    ) : 0;
-    return {r,mancanti,quota,perSlot,pressione,priorita,cap:cap(r,c),premium:cc.premiumRimasti,scarsita,stressBudget};
+    const prioritaPersonale=mancanti>0 ? (0.40*bisogno + 0.25*scarsita + 0.20*stressNorm + 0.15*pressioneNorm) : 0;
+    // La fase globale ha precedenza sulla classifica personale: finché tutte
+    // le squadre non hanno chiuso il reparto corrente, quello resta il reparto
+    // di riferimento dell'asta. La strategia personale viene comunque mostrata.
+    const prioritaFase=(fase===r && mancanti>0)?1:0;
+    const priorita=prioritaFase*2 + prioritaPersonale*0.1;
+    return {r,mancanti,quota,perSlot,pressione,priorita,prioritaPersonale,cap:cap(r,c),premium:cc.premiumRimasti,scarsita,stressBudget};
   });
-  const priorita=ruoli.slice().sort((a,b)=>b.priorita-a.priorita).filter(x=>x.mancanti>0);
-  const prioritaTop=priorita[0]||null;
+  const personale=ruoli.slice().sort((a,b)=>b.prioritaPersonale-a.prioritaPersonale).filter(x=>x.mancanti>0);
+  const prioritaTop=fase ? (ruoli.find(x=>x.r===fase && x.mancanti>0) || personale[0] || null) : (personale[0]||null);
   const occasioni=[];
   P.forEach(p=>{
     if(S.mie[p.id]!==undefined || S.altrui[p.id]!==undefined || p.mkt<=1) return;
@@ -1075,20 +1081,21 @@ function costruisciPianoStrategico(){
     const convenienza=Number(p.val)>0 ? Number(p.val)/Math.max(1,Number(p.mkt)) : 1;
     if(convenienza<0.98) return;
     const punti=Number.isFinite(Number(p.ptot))?Number(p.ptot):0;
-    const score=(convenienza*0.72)+(Math.min(1,punti/300)*0.18)+(rr.priorita*0.10);
+    const score=(convenienza*0.72)+(Math.min(1,punti/300)*0.18)+(rr.prioritaPersonale*0.10)+(fase===p.r?0.08:0);
     occasioni.push({p,rr,convenienza,score});
   });
   occasioni.sort((a,b)=>b.score-a.score);
-  return {c,ruoli,prioritaTop,occasioni:occasioni.slice(0,5)};
+  return {c,ruoli,prioritaTop,occasioni:occasioni.slice(0,5),fase,prioritaPersonale:personale[0]||null};
 }
+
 function drawPianoStrategico(){
   const box=$('#strategyPanel'); if(!box) return;
   const a=costruisciPianoStrategico();
   const spendibile=Math.max(0,a.c.tot.resid-Math.max(0,a.c.tot.liberi-1));
-  const priorita=a.prioritaTop ? `${RN[a.prioritaTop.r]} · ${a.prioritaTop.mancanti} slot da coprire` : 'Rosa completa';
+  const priorita=a.prioritaTop ? `${RN[a.prioritaTop.r]} · ${a.prioritaTop.mancanti} slot da coprire` : 'Rosa completa'; const faseLabel=a.fase?RN[a.fase]:'Asta completata';
   const roleRows=a.ruoli.map(x=>`<div class="strategyRole role-${x.r}"><div class="strategyRoleHead"><b>${RN[x.r]}</b><span>${x.mancanti?`${x.mancanti} da comprare`:'completo'}</span></div><div class="strategyRoleStats"><span>budget reparto<strong>${Math.round(x.quota)}</strong></span><span>max singolo<strong>${x.cap||'—'}</strong></span><span>pressione<strong>${x.pressione.toFixed(2)}×</strong></span><span>premium<strong>${x.premium}</strong></span></div></div>`).join('');
   const oppRows=a.occasioni.map(x=>`<div class="strategyOpp"><div><b>${escHtml(x.p.n)}</b><span>${RN[x.p.r]} · valore ${Math.round(x.p.val)} · mercato ${Math.round(x.p.mkt)}</span></div><strong>+${Math.round((x.convenienza-1)*100)}%</strong></div>`).join('');
-  box.innerHTML=`<div class="strategyTitle"><div><b>🎯 Piano strategico</b><span>Budget e priorità per i prossimi acquisti</span></div><strong>${Math.round(a.c.tot.resid)} cr</strong></div><div class="strategySummary"><div><small>Priorità attuale</small><b>${escHtml(priorita)}</b></div><div><small>Davvero spendibili ora</small><b>${Math.round(spendibile)} cr</b></div><div><small>Slot residui</small><b>${Math.max(0,a.c.tot.liberi)}</b></div></div><div class="strategyRoles">${roleRows}</div><div class="strategyOpps"><h4>🟢 Occasioni compatibili</h4>${oppRows||'<div class="strategyEmpty">Nessuna occasione evidente entro il massimo strategico attuale.</div>'}</div>`;
+  box.innerHTML=`<div class="strategyTitle"><div><b>🎯 Piano strategico</b><span>Budget e priorità per i prossimi acquisti</span></div><strong>${Math.round(a.c.tot.resid)} cr</strong></div><div class="strategySummary"><div><small>Fase asta</small><b>${escHtml(faseLabel)}</b></div><div><small>Priorità tua</small><b>${escHtml(priorita)}</b></div><div><small>Davvero spendibili ora</small><b>${Math.round(spendibile)} cr</b></div><div><small>Slot residui</small><b>${Math.max(0,a.c.tot.liberi)}</b></div></div><div class="strategyRoles">${roleRows}</div><div class="strategyOpps"><h4>🟢 Occasioni compatibili</h4>${oppRows||'<div class="strategyEmpty">Nessuna occasione evidente entro il massimo strategico attuale.</div>'}</div>`;
 }
 function drawAnalysis(){
   const a=costruisciAnalisi();
