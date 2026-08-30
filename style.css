@@ -622,7 +622,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,label.chk:focus-wi
 }
 /* schermi molto larghi: il contenuto si ferma, non si stira */
 @media(min-width:1560px){
-  .top .tline,.top .roles,.fil,#opz,.chips,.body{max-width:1500px;margin-left:auto;margin-right:auto;width:100%}
+  .top .tline,.top .tsum,.top .roles,.fil,#opz,.chips,.body{max-width:1500px;margin-left:auto;margin-right:auto;width:100%}
   .fil,#opz,.chips{padding-left:calc(50vw - 750px);padding-right:calc(50vw - 750px);max-width:none}
 }
 
@@ -1089,3 +1089,5 @@ button, input, select, textarea { max-width:100%; }
   .simulationSummary strong{font-size:16px;margin-top:3px}
   .simGroup>div{min-width:0;gap:8px}.simGroup>div span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
+
+.factorMini{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 2px;color:var(--muted);font-size:11px}.factorMini b{color:var(--txt)}
