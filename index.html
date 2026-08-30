@@ -213,6 +213,7 @@
 
 <div class="sheet" id="analysisSheet"><div class="card analysisCard">
   <div class="analysisHead"><div><h3>Analisi asta</h3><div class="sub">Decisioni rapide basate su budget, domanda, prezzi osservati e qualità dei giocatori rimasti.</div></div><button class="close" id="closeAnalysisTop">Chiudi</button></div>
+  <section id="strategyPanel" class="strategyPanel" aria-label="Piano strategico"></section>
   <div id="analysisAlerts" class="analysisAlerts"></div>
   <div id="analysisRoles" class="analysisRoles"></div>
   <div class="analysisActions"><button class="ok" id="simulateTeam">Simula la mia rosa</button><button id="refreshAnalysis">Aggiorna analisi</button></div>
@@ -298,9 +299,6 @@ try { nomiSalvati = JSON.parse(localStorage.getItem(NOMI_SQUADRE_KEY)||'null'); 
 let S = {mie:{}, altrui:{}, altruiTeam:{}, veri:{}, open:null, ruolo:'ALL', q:'', taken:false,
          sq:'ALL', vd:'ALL', tit:'ALL', ord:'mkt', bud:false, squadraNomi:normalizzaNomiSquadre(nomiSalvati, LG.squadre), auctionHistory:[]};
 const st = S; st.rip = 'lega'; st.usaGer = true;
-
-// Riferimenti fissati all'inizio dell'asta: non vengono sovrascritti dai ricalcoli live.
-function resetAstaBase(){ P.forEach(p=>{ delete p.baseMkt; delete p.baseVal; }); }
 
 
 /* ---------- importazione dati ----------
@@ -434,8 +432,7 @@ function applica(quale, testo, esito){
   const box = $('#'+esito);
   try{
     const msg = IMPORT[quale](testo);
-    resetAstaBase();
-    calcolaPrezzi(); redraw();
+    calcolaPrezzi(false, true); redraw();
     box.textContent = msg; box.className = 'esito';
   }catch(err){
     box.textContent = err.message; box.className = 'esito err';
@@ -576,7 +573,7 @@ function aggiornaDatasetGiocatori(nuovi){
   }
 
   // Ricalcola prezzi e costo atteso
-  calcolaPrezzi();
+  calcolaPrezzi(false, true);
   popolaDatalist();
   redraw();
 
@@ -782,7 +779,7 @@ $('#rosaReset').addEventListener('click', ()=>{
   DATA.players.forEach(p=>P.push(Object.assign({},p)));
   Object.keys(byId).forEach(k=>delete byId[k]);
   P.forEach(p=>byId[p.id]=p);
-  calcolaPrezzi(); popolaDatalist(); redraw();
+  calcolaPrezzi(false, true); popolaDatalist(); redraw();
   $('#rosaFonte').textContent='Usati i dati predefiniti incorporati nell’app.';
 });
 
@@ -1032,8 +1029,70 @@ function generaAlert(analysis){
   if(!out.length) out.push({type:'ok',text:'Asta equilibrata: nessun allarme forte in questo momento.'});
   return out.slice(0,6);
 }
+function costruisciPianoStrategico(){
+  const c=conti();
+  const totaleSlot=ORD.reduce((a,r)=>a+(Number(LG.slot[r])||0),0);
+  const ruoloBase=totaleSlot>0 ? 1/totaleSlot : 0;
+  const ruoli=ORD.map(r=>{
+    const cc=datiCompetizioneRuolo(r);
+    const mancanti=Math.max(0,Number(c[r].liberi)||0);
+    const quota=Math.max(0,Number(c[r].quota)||0);
+    const perSlot=mancanti>0 ? quota/mancanti : 0;
+    const pressione=Math.max(0.5,Math.min(1.6,(cc.mercato==null?1:cc.mercato)*cc.pressioneBudget*cc.pressioneRuolo*cc.pressioneTeam*cc.shortage));
+    const bisogno=mancanti/(Math.max(1,Number(LG.slot[r])||1));
+    const disponibili=Math.max(1,giocatoriDisponibiliRuolo(r).length);
+    const domandaTotale=Math.max(1,Number(LG.slot[r])||1);
+    // Urgenza di scarsità: aumenta solo quando i giocatori di fascia utile
+    // rimasti sono pochi rispetto agli slot che dobbiamo ancora coprire.
+    const qualitaDisponibile=Math.max(1,Number(cc.premiumRimasti)||0);
+    const coperturaQualita=qualitaDisponibile/Math.max(1,mancanti);
+    const scarsita=limite(1-Math.min(1,coperturaQualita/2),0,1);
+    // Stress di budget del reparto: se la quota disponibile per slot è bassa
+    // rispetto al costo realistico dei giocatori rimasti, la priorità cresce.
+    const poolCosti=giocatoriDisponibiliRuolo(r).map(x=>Number(x.mkt)||0).filter(x=>x>1).sort((a,b)=>a-b);
+    const campione=poolCosti.slice(0,Math.min(poolCosti.length,Math.max(3,Math.ceil(mancanti*1.5))));
+    const costoMinimoRealistico=campione.length ? campione.reduce((a,x)=>a+x,0)/campione.length : 1;
+    const stressBudget=limite(costoMinimoRealistico/Math.max(1,perSlot),0,2);
+    const stressNorm=limite((stressBudget-0.70)/0.90,0,1);
+    const pressioneNorm=limite((pressione-0.85)/0.55,0,1);
+    // La priorità non è legata a un ruolo fisso: combina bisogno, scarsità,
+    // sostenibilità economica e pressione competitiva.
+    const priorita=mancanti>0 ? (
+      0.40*bisogno +
+      0.25*scarsita +
+      0.20*stressNorm +
+      0.15*pressioneNorm
+    ) : 0;
+    return {r,mancanti,quota,perSlot,pressione,priorita,cap:cap(r,c),premium:cc.premiumRimasti,scarsita,stressBudget};
+  });
+  const priorita=ruoli.slice().sort((a,b)=>b.priorita-a.priorita).filter(x=>x.mancanti>0);
+  const prioritaTop=priorita[0]||null;
+  const occasioni=[];
+  P.forEach(p=>{
+    if(S.mie[p.id]!==undefined || S.altrui[p.id]!==undefined || p.mkt<=1) return;
+    const rr=ruoli.find(x=>x.r===p.r);
+    if(!rr || rr.mancanti<=0 || rr.cap<=0 || p.mkt>rr.cap) return;
+    const convenienza=Number(p.val)>0 ? Number(p.val)/Math.max(1,Number(p.mkt)) : 1;
+    if(convenienza<0.98) return;
+    const punti=Number.isFinite(Number(p.ptot))?Number(p.ptot):0;
+    const score=(convenienza*0.72)+(Math.min(1,punti/300)*0.18)+(rr.priorita*0.10);
+    occasioni.push({p,rr,convenienza,score});
+  });
+  occasioni.sort((a,b)=>b.score-a.score);
+  return {c,ruoli,prioritaTop,occasioni:occasioni.slice(0,5)};
+}
+function drawPianoStrategico(){
+  const box=$('#strategyPanel'); if(!box) return;
+  const a=costruisciPianoStrategico();
+  const spendibile=Math.max(0,a.c.tot.resid-Math.max(0,a.c.tot.liberi-1));
+  const priorita=a.prioritaTop ? `${RN[a.prioritaTop.r]} · ${a.prioritaTop.mancanti} slot da coprire` : 'Rosa completa';
+  const roleRows=a.ruoli.map(x=>`<div class="strategyRole role-${x.r}"><div class="strategyRoleHead"><b>${RN[x.r]}</b><span>${x.mancanti?`${x.mancanti} da comprare`:'completo'}</span></div><div class="strategyRoleStats"><span>budget reparto<strong>${Math.round(x.quota)}</strong></span><span>max singolo<strong>${x.cap||'—'}</strong></span><span>pressione<strong>${x.pressione.toFixed(2)}×</strong></span><span>premium<strong>${x.premium}</strong></span></div></div>`).join('');
+  const oppRows=a.occasioni.map(x=>`<div class="strategyOpp"><div><b>${escHtml(x.p.n)}</b><span>${RN[x.p.r]} · valore ${Math.round(x.p.val)} · mercato ${Math.round(x.p.mkt)}</span></div><strong>+${Math.round((x.convenienza-1)*100)}%</strong></div>`).join('');
+  box.innerHTML=`<div class="strategyTitle"><div><b>🎯 Piano strategico</b><span>Budget e priorità per i prossimi acquisti</span></div><strong>${Math.round(a.c.tot.resid)} cr</strong></div><div class="strategySummary"><div><small>Priorità attuale</small><b>${escHtml(priorita)}</b></div><div><small>Davvero spendibili ora</small><b>${Math.round(spendibile)} cr</b></div><div><small>Slot residui</small><b>${Math.max(0,a.c.tot.liberi)}</b></div></div><div class="strategyRoles">${roleRows}</div><div class="strategyOpps"><h4>🟢 Occasioni compatibili</h4>${oppRows||'<div class="strategyEmpty">Nessuna occasione evidente entro il massimo strategico attuale.</div>'}</div>`;
+}
 function drawAnalysis(){
   const a=costruisciAnalisi();
+  drawPianoStrategico();
   $('#analysisAlerts').innerHTML=generaAlert(a).map(x=>`<div class="analysisAlert ${x.type}">${x.text}</div>`).join('');
   $('#analysisRoles').innerHTML=a.ruoli.map(x=>`<section class="analysisRole role-${x.r}"><div class="analysisRoleHead"><b>${RN[x.r]}</b><span>${x.label}</span></div><div class="analysisRoleStats"><span>pressione <strong>${x.pressure.toFixed(2)}×</strong></span><span>slot domanda <strong>${x.slot}</strong></span><span>premium rimasti <strong>${x.premium}</strong></span><span>mercato <strong>${x.market.toFixed(2)}×</strong></span></div></section>`).join('');
   drawBacktesting();
@@ -1187,7 +1246,7 @@ function drawBacktesting(){
   box.innerHTML=`<div class="btSummary"><div><small>Osservazioni</small><b>${bt.n}</b></div><div><small>Errore medio</small><b>${bt.n?(Math.round(bt.mae*1000)/10)+'%':'—'}</b></div><div><small>Scostamento medio</small><b>${bt.n?(bt.signed>=0?'+':'')+(Math.round(bt.signed*1000)/10)+'%':'—'}</b></div></div><h4>Accuratezza per ruolo</h4>${roleRows}<h4>Profilazione squadre</h4>${profRows}<h4>Ultimi acquisti registrati</h4><div class="btEvents">${rows||'<div class="sub">Nessun acquisto registrato in questa sessione.</div>'}</div>`;
 }
 
-function calcolaPrezzi(mostraTrend=false){
+function calcolaPrezzi(mostraTrend=false, resetBase=false){
   const quote = st.rip==='media' ? DATA.quote_media : DATA.quote;
   const mktPrecedenti = new Map(P.map(p=>[p.id, Number(p.mkt)||0]));
   P.forEach(p=>{
@@ -1224,11 +1283,17 @@ function calcolaPrezzi(mostraTrend=false){
     }
   }
 
-  // Fissiamo il riferimento solo alla prima elaborazione dell'asta.
-  // I ricalcoli successivi non devono usare un valore già corretto dall'asta.
+  // Salviamo il valore/prezzo di riferimento PRIMA di applicare l'andamento
+  // della singola asta. In questo modo i correttivi live non si auto-alimentano.
   P.forEach(p=>{
-    if(p.baseMkt==null) p.baseMkt = p.mkt;
-    if(p.baseVal==null) p.baseVal = Math.max(1, Math.round(p.mkt*p.fatt));
+    // baseVal rappresenta il riferimento PRE-ASTA e non deve essere
+    // rigenerato dopo ogni acquisto, altrimenti il correttivo si auto-alimenta.
+    // Lo rigeneriamo solo quando cambiano i dati/configurazioni di base
+    // (resetBase=true) oppure per un giocatore appena importato.
+    if(resetBase || !Number.isFinite(Number(p.baseVal)) || Number(p.baseVal)<=0){
+      p.baseMkt = p.mkt;
+      p.baseVal = Math.max(1, Math.round(p.mkt*p.fatt));
+    }
     p.val = p.baseVal;
     p.min = Math.max(1, Math.round(p.val*0.85));
     p.max = Math.max(1, Math.round(p.val*1.15));
@@ -1441,8 +1506,8 @@ function ricalibraConAsta(){
     });
   });
 }
-$('#rip').addEventListener('change', e=>{ st.rip=e.target.value; resetAstaBase(); calcolaPrezzi(); redraw(); });
-$('#usager').addEventListener('change', e=>{ st.usaGer=e.target.checked; resetAstaBase(); calcolaPrezzi(); redraw(); });
+$('#rip').addEventListener('change', e=>{ st.rip=e.target.value; calcolaPrezzi(false, true); redraw(); });
+$('#usager').addEventListener('change', e=>{ st.usaGer=e.target.checked; calcolaPrezzi(false, true); redraw(); });
 
 /* ---------- budget per ruolo ---------- */
 // l'obiettivo di spesa per ruolo viene dalle aste vere della lega
@@ -2116,10 +2181,9 @@ $('#analysisSheet').addEventListener('click', e=>{ if(e.target.id==='analysisShe
 $('#openTeams').addEventListener('click', apriTeams);
 $('#teamsNsq').addEventListener('change', e=>{
   LG.squadre=+e.target.value;
-  resetAstaBase();
   S.squadraNomi=normalizzaNomiSquadre(S.squadraNomi,LG.squadre);
   Object.keys(S.altruiTeam).forEach(id=>{ const t=Number(S.altruiTeam[id]); if(!(t>0&&t<LG.squadre)) delete S.altruiTeam[id]; });
-  salvaNomiSquadre(); calcolaPrezzi(); redraw(); aggiornaTeamsControls(); drawTeams();
+  salvaNomiSquadre(); calcolaPrezzi(false, true); redraw(); aggiornaTeamsControls(); drawTeams();
 });
 $('#teamsNameSel').addEventListener('change', e=>{ const i=+e.target.value; $('#teamsNameInput').value=S.squadraNomi[i]||''; });
 $('#teamsNameSave').addEventListener('click', ()=>{ const i=+$('#teamsNameSel').value; const v=$('#teamsNameInput').value.trim(); if(!v) return; S.squadraNomi[i]=v; salvaNomiSquadre(); drawTeams(); $('#teamsNameSel').options[i].text=v; });
@@ -2222,7 +2286,7 @@ $('#list').addEventListener('click', e=>{
 }, true);
 function azzeraTutto(){
   if(confirm('Azzerare rosa e assegnazioni?')){
-    S.mie={}; S.altrui={}; S.altruiTeam={}; S.veri={}; S.auctionHistory=[]; S.open=null; resetAstaBase(); calcolaPrezzi(); redraw();
+    S.mie={}; S.altrui={}; S.altruiTeam={}; S.veri={}; S.auctionHistory=[]; S.open=null; calcolaPrezzi(); redraw();
   }
 }
 $('#reset').addEventListener('click', azzeraTutto);
@@ -2469,8 +2533,7 @@ $('#ocrApplica').addEventListener('click', ocrApplica);
 document.addEventListener('click', e=>{
   if(e.target.id!=='save') return;
   const importati = P.filter(x=>x.p1000>0).map(x=>[x.id, x.p1000]);
-  const base = P.filter(x=>x.baseVal!=null).map(x=>[x.id,x.baseMkt,x.baseVal]);
-  const blob = new Blob([JSON.stringify({mie:S.mie, altrui:S.altrui, altruiTeam:S.altruiTeam, veri:S.veri, base, p1000:importati,
+  const blob = new Blob([JSON.stringify({mie:S.mie, altrui:S.altrui, altruiTeam:S.altruiTeam, veri:S.veri, p1000:importati,
     rip:st.rip, squadre:LG.squadre, squadraNomi:S.squadraNomi, auctionHistory:S.auctionHistory, ts:Date.now()})],
     {type:'application/json'});
   const a = document.createElement('a');
@@ -2482,8 +2545,7 @@ document.addEventListener('change', e=>{
   if(e.target.id!=='load' || !e.target.files.length) return;
   const fr = new FileReader();
   fr.onload = () => { try{ const o=JSON.parse(fr.result);
-    S.mie=o.mie||{}; S.altrui=o.altrui||{}; S.altruiTeam=o.altruiTeam||{}; S.veri=o.veri||{}; S.auctionHistory=Array.isArray(o.auctionHistory)?o.auctionHistory:[]; S.open=null; resetAstaBase();
-    if(Array.isArray(o.base)) o.base.forEach(([k,bm,bv])=>{ if(byId[k]){ byId[k].baseMkt=bm; byId[k].baseVal=bv; } });
+    S.mie=o.mie||{}; S.altrui=o.altrui||{}; S.altruiTeam=o.altruiTeam||{}; S.veri=o.veri||{}; S.auctionHistory=Array.isArray(o.auctionHistory)?o.auctionHistory:[]; S.open=null;
     if(o.rip) st.rip=o.rip;
     if(o.squadre) LG.squadre=o.squadre;
     S.squadraNomi=normalizzaNomiSquadre(o.squadraNomi||S.squadraNomi, LG.squadre);
@@ -2504,7 +2566,7 @@ function redraw(){
   if($('#analysisSheet')?.classList.contains('on')) drawAnalysis();
 }
 
-calcolaPrezzi(); redraw();
+calcolaPrezzi(false, true); redraw();
 </script>
 
 
