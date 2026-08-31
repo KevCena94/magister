@@ -217,3 +217,5 @@ function costruisciAnalisi(){
     return {r,market,pressure,label,slot:cc.domandaResidua,premium:cc.premiumRimasti};
   });
   return {c,ruoli};
+
+V63: margine colorato positivo/negativo/neutro e visualizzazione dei possibili rivali reali per reparto.

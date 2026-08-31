@@ -1050,9 +1050,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .simGroup h4{padding:8px 10px;margin:0;background:var(--surf2)}
 .simGroup h4.role-P{color:var(--P)}.simGroup h4.role-D{color:var(--D)}.simGroup h4.role-C{color:var(--C)}.simGroup h4.role-A{color:var(--A)}
 .simGroup>div{display:flex;justify-content:space-between;padding:7px 10px;border-top:1px solid var(--line);font-size:13px}.simGroup b{font-family:var(--mono)}
-.decisionMini{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:10px;background:var(--surf2);border:1px solid var(--line);margin:2px 0 4px}
-.decisionMini span:first-child{font-size:12px;color:var(--mut)}.decisionMini strong{font-family:var(--mono);font-size:18px;color:var(--txt);margin-left:5px}
-.decisionState{font-size:11px;font-weight:900;letter-spacing:.05em;padding:5px 8px;border-radius:7px}.decisionState.raise,.decisionState.take{background:#e8f1ea;color:#2E7D5B}.decisionState.leave{background:#f6e9e9;color:#B24E4E}.decisionState.watch{background:#f1f1ef;color:#555}
+.decisionMini{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:10px;background:var(--surf2);border:1px solid var(--line);margin:2px 0 4px}
+.decisionCore{display:flex;flex-direction:column;gap:2px;min-width:0}.decisionLimit{font-size:12px;color:var(--mut)}.decisionLimit strong{font-family:var(--mono);font-size:20px;color:var(--txt);margin-left:5px}.decisionCurrent{font-size:11px;color:var(--mut)}.decisionCurrent strong{font-family:var(--mono);color:var(--txt);margin-left:2px}.decisionCurrent #decisionMargin{color:var(--gold)}.decisionCurrent #decisionMargin.over{color:var(--neg)}
+.decisionState{font-size:11px;font-weight:900;letter-spacing:.05em;padding:6px 9px;border-radius:7px;min-width:92px;text-align:center}.decisionState.raise,.decisionState.take{background:#e8f1ea;color:#2E7D5B}.decisionState.leave{background:#f6e9e9;color:#B24E4E}.decisionState.watch{background:#f1f1ef;color:#555}
+@media(max-width:700px){.decisionMini{align-items:flex-start;gap:8px}.decisionTechnical{display:none}.decisionLimit strong{font-size:19px}.decisionState{min-width:88px}.decisionCurrent{font-size:10.5px}}
 @media(max-width:700px){.analysisAlerts,.analysisRoles{grid-template-columns:1fr}.analysisActions{justify-content:stretch}.analysisActions button{flex:1}.analysisHead{gap:8px}}
 
 /* V27: mobile action buttons and robust overflow prevention */
@@ -1166,3 +1167,169 @@ button, input, select, textarea { max-width:100%; }
      occasione del Piano Strategico venga coperta dalle icone inferiori. */
   .rightRail .strategyHomeWrap{padding:0 0 max(86px,calc(70px + env(safe-area-inset-bottom)));} 
 }
+
+
+/* ==========================================================
+   V60 — REDESIGN UI
+   Obiettivo: gerarchia visiva più immediata senza cambiare
+   la logica dell'asta. Il comportamento resta quello della V59.
+   ========================================================== */
+:root{
+  --v60-radius:14px;
+  --v60-radius-sm:10px;
+}
+
+html{scroll-behavior:smooth}
+body{background:var(--ink);}
+
+/* Header: più compatto, più leggibile, separazione netta dal mercato */
+.testa{box-shadow:0 1px 0 rgba(27,27,25,.10)}
+.top{backdrop-filter:blur(8px)}
+.tline{min-height:48px}
+.brand{white-space:nowrap}
+.brand em{font-style:normal;color:var(--mut);font-weight:500;font-size:.72em;margin-left:4px}
+.big{display:flex;align-items:baseline;gap:5px}
+.big small{letter-spacing:.01em}
+.big span{font-variant-numeric:tabular-nums}
+
+/* KPI più simili a indicatori, meno effetto "toolbar" */
+.tline>.big{padding:5px 9px;border:1px solid var(--line);border-radius:10px;background:var(--surf)}
+.tline>.tspace{flex:1}
+
+/* Navigazione ruoli */
+.roles{gap:6px}
+.roles>*{border-radius:10px}
+.segbar{background:var(--ink);border-bottom:1px solid var(--line)}
+.segbarInner{gap:10px}
+.seg{padding:4px;background:var(--surf2);border:1px solid var(--line);border-radius:12px}
+.seg button{border-radius:9px}
+.seg button[aria-pressed="true"]{box-shadow:0 1px 4px rgba(27,27,25,.14)}
+
+/* Ricerca: elemento principale dell'interazione */
+#q{background:var(--surf);border:1px solid var(--line);box-shadow:0 1px 3px rgba(27,27,25,.05)}
+#q:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(196,155,60,.13)}
+
+/* Filtri */
+#opz{border-bottom:1px solid var(--line);background:var(--surf2)}
+.fld,.flags{background:var(--surf);border:1px solid var(--line);border-radius:11px}
+
+/* Chips più discrete */
+.chips{min-height:0}
+.chip{border-radius:999px}
+
+/* Lista: una scheda = un oggetto del mercato */
+.list{background:var(--ink)}
+.crd{border-radius:var(--v60-radius);border-left-width:4px;box-shadow:0 2px 8px rgba(27,27,25,.055)}
+.crd:hover{transform:translateY(-1px);box-shadow:0 5px 15px rgba(27,27,25,.09)}
+.crd.aperta{box-shadow:0 6px 20px rgba(27,27,25,.12)}
+.row{min-height:62px}
+.row:active{background:var(--surf2)}
+.rl{border-radius:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.who b{font-size:16px}
+.rng b{font-size:18px}
+.rng small{margin-top:3px}
+.vd{border-radius:999px!important;padding:4px 9px!important;border:1px solid var(--line)}
+/* V61: ripristino colori semantici originali dei verdetti */
+
+/* Azione aperta: separata chiaramente dalla scheda */
+.act{background:linear-gradient(to bottom,var(--surf2),var(--surf));padding:12px 14px 14px;border-top:1px solid var(--line)}
+.decisionMini{box-shadow:0 1px 3px rgba(27,27,25,.04)}
+.decisionState{min-width:84px;text-align:center}
+
+/* Piano strategico: diventa il vero pannello decisionale laterale */
+.rightRail{gap:14px}
+.rightRail .rose,.strategyHome{filter:drop-shadow(0 2px 5px rgba(27,27,25,.04))}
+.rightRail .rose{border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--ink)}
+.rightRail .rose h2{font-size:19px}
+.strategyHome .strategyHero{border-radius:14px 14px 0 0}
+.strategyHero>strong{font-size:26px}
+.strategyQuick>div{background:var(--surf2)}
+.strategyNext{min-height:42px}
+.strategyHome .strategyOpps h4{font-size:11px;letter-spacing:.01em}
+.strategyOpp{transition:background .12s}
+.strategyOpp:hover{background:var(--surf2)}
+
+/* Modali */
+.sheet{background:rgba(27,27,25,.48)}
+.card{border-radius:18px;box-shadow:0 18px 55px rgba(0,0,0,.20)}
+
+/* Bottoni flottanti: stessa dimensione e stessa baseline */
+.fab,.fabocr,.fabdata{box-shadow:0 5px 18px rgba(0,0,0,.16)}
+
+/* Desktop: rail più presente e mercato più arioso */
+@media(min-width:1024px){
+  .body{grid-template-columns:minmax(0,1fr) 380px}
+  .list{padding-left:16px;padding-right:16px}
+  .rightRail{margin-left:0;margin-right:16px}
+  .rightRail .rose{position:sticky;top:10px}
+}
+
+/* Tablet: evita che il redesign crei scroll orizzontale */
+@media(min-width:600px) and (max-width:1023px){
+  .list{padding-left:14px;padding-right:14px}
+  .rightRail{padding-left:14px;padding-right:14px}
+}
+
+/* Mobile: la barra inferiore è sempre fuori dal contenuto del Piano */
+@media(max-width:599px){
+  body{padding-bottom:0}
+  .top{padding-top:max(8px,env(safe-area-inset-top))}
+  .tline{gap:5px}
+  .tline>.big{padding:4px 7px}
+  .big{font-size:20px}
+  .brand{font-size:17px}
+  .segbar{padding-top:7px}
+  .segbarInner{gap:7px}
+  .list{padding-bottom:max(150px,calc(126px + env(safe-area-inset-bottom)))}
+  .rightRail{padding-bottom:max(118px,calc(104px + env(safe-area-inset-bottom)))}
+  .strategyHomeWrap{padding-bottom:0!important}
+  .crd{border-radius:12px}
+  .row{min-height:60px}
+  .who b{font-size:15px}
+  .rng b{font-size:17px}
+  .vd{padding:3px 7px!important}
+  .fabocr,.fabdata,.fab{bottom:max(14px,env(safe-area-inset-bottom));z-index:55}
+  .fabocr,.fabdata{width:52px;height:52px}
+  .fabdata{left:76px}
+  .fab{min-height:52px}
+}
+@media(max-width:389px){
+  .fabdata{left:72px}
+  .tline>.big:nth-of-type(3){display:none}
+}
+
+/* Accessibilità: nessun significato affidato esclusivamente al colore */
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.crd,.strategyOpp{transition:none!important}}
+
+
+/* V64: margine semantico */
+.decisionCurrent #decisionMargin.marginPositive{color:var(--pos)!important}
+.decisionCurrent #decisionMargin.marginNegative{color:var(--neg)!important}
+.marginPositive{color:var(--pos)!important}
+.marginNegative{color:var(--neg)!important}
+
+/* V64: termometro leggibile su mobile, niente sovrapposizioni */
+@media(max-width:599px){
+  .trklab{position:relative;height:auto!important;display:flex;justify-content:space-between;align-items:flex-start;gap:4px;overflow:visible;font-size:9px!important;line-height:1.1;padding-top:2px}
+  .trklab span{position:static!important;transform:none!important;white-space:nowrap;flex:0 0 auto}
+  .trklab span.g{order:2}
+  .trklab span.r{order:4}
+  .trklab span:first-child{order:1}
+  .trklab span:nth-child(3){order:3}
+  .trklab span.g{color:var(--gold)}
+  .trklab span.r{color:var(--neg)}
+}
+@media(max-width:389px){
+  .trklab{font-size:8px!important;gap:2px}
+}
+
+/* V64: simulatore */
+.simulationCard{max-width:760px}
+.simControls{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:10px;align-items:end;margin:14px 0}
+.simControls label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--mut)}
+.simControls select,.simControls input{background:var(--surf);border:1px solid var(--line);border-radius:9px;padding:10px 11px;min-height:42px}
+.scenarioRoles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.scenarioRoles>div{background:var(--surf2);border:1px solid var(--line);border-radius:10px;padding:9px}
+.scenarioRoles b,.scenarioRoles span{display:block}.scenarioRoles b{font-size:11px}.scenarioRoles span{font-size:10px;color:var(--mut);margin-top:3px}
+@media(max-width:599px){.simControls{grid-template-columns:1fr 1fr}.simControls label:first-child{grid-column:1/-1}.simControls .ok{grid-column:1/-1}.scenarioRoles{grid-template-columns:repeat(2,1fr)}}

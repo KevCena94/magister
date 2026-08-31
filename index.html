@@ -40,7 +40,7 @@
 <div class="testa" id="testa">
 <div class="top" id="top">
   <div class="tline">
-    <span class="brand">Asta <em>2026-27 · V35</em></span>
+    <span class="brand">Asta <em>2026-27</em></span>
     <span class="big"><small><i class="lg">Crediti</i><i class="sm">Cr</i></small><span id="cred">1000</span><em id="credtot"></em></span>
     <span class="big"><small><i class="lg">Slot liberi</i><i class="sm">Slot</i></small><span id="slots">25</span></span>
     <span class="big solomax"><small><i class="lg">Max su un giocatore</i><i class="sm">Max</i></small><span id="capmax">–</span></span>
@@ -221,10 +221,26 @@
   <section id="strategyPanel" class="strategyPanel strategyDetail" aria-label="Piano strategico dettagliato"></section>
   <div id="analysisAlerts" class="analysisAlerts"></div>
   <div id="analysisRoles" class="analysisRoles"></div>
-  <div class="analysisActions"><button class="ok" id="simulateTeam">Simula la mia rosa</button><button id="refreshAnalysis">Aggiorna analisi</button></div>
+  <div class="analysisActions"><button class="ok" id="simulateTeam">Simula la mia rosa</button><button id="openAuctionSim">Simula scenario asta</button><button id="refreshAnalysis">Aggiorna analisi</button></div>
   <div id="simulationResult" class="simulationResult"></div>
   <div id="backtestPanel" class="backtestPanel"></div>
   <button class="close" id="closeAnalysis">Chiudi</button>
+</div></div>
+
+<div class="sheet" id="auctionSimSheet"><div class="card simulationCard">
+  <div class="analysisHead"><div><h3>Simulazione asta</h3><div class="sub">Crea uno stato realistico dell'asta in un click.</div></div><button class="close" id="closeAuctionSimTop">Chiudi</button></div>
+  <div class="simControls">
+    <label><span>Checkpoint</span><select id="simCheckpoint">
+      <option value="P1">P1 · portieri iniziati</option><option value="P2">P2 · portieri avanzati</option><option value="P3">P3 · portieri quasi terminati</option><option value="P4">P4 · portieri terminati</option>
+      <option value="D1">D1 · difensori iniziati</option><option value="D2">D2 · difensori a metà</option><option value="D3">D3 · difensori quasi terminati</option><option value="D4">D4 · difensori terminati</option>
+      <option value="C1">C1 · centrocampisti iniziati</option><option value="C2">C2 · centrocampisti a metà</option><option value="C3">C3 · centrocampisti quasi terminati</option><option value="C4">C4 · centrocampisti terminati</option>
+      <option value="A1">A1 · attaccanti iniziati</option><option value="A2">A2 · attaccanti a metà</option><option value="A3">A3 · attaccanti quasi terminati</option><option value="A4">A4 · attaccanti terminati</option>
+    </select></label>
+    <label><span>Seed</span><input id="simSeed" type="number" inputmode="numeric" value="64001"></label>
+    <button class="ok" id="runAuctionSim">Genera scenario</button>
+  </div>
+  <div id="auctionSimResult" class="simulationResult"></div>
+  <button class="close" id="closeAuctionSim">Chiudi</button>
 </div></div>
 
 <div class="sheet" id="teamsSheet"><div class="card teamsCard">
@@ -854,7 +870,9 @@ function fattoreCompetizioneAvversari(p,c){
   const fattore=limite(1+(media-1)*impatto + (score-0.5)*0.06,0.90,1.18);
   const forti=segnali.filter(x=>x.interesse>=0.62 && x.conf>=0.35).length;
   const deboli=segnali.filter(x=>x.interesse<=0.28 && x.conf>=0.35).length;
-  const competitori=segnali.filter(x=>x.interesse>=0.55).sort((a,b)=>b.interesse-a.interesse);
+  // V64: un rivale potenziale è ogni squadra che ha ancora slot nel ruolo e risorse per competere.
+  // L'interesse resta un punteggio, ma non viene più usato per nascondere arbitrariamente i rivali.
+  const competitori=segnali.filter(x=>x.roleSlots>0 && x.crediti>0).sort((a,b)=>b.interesse-a.interesse);
   return {fattore,confidenza,forti,deboli,competitori,score};
 }
 function riservaStrategica(p,c,pool){
@@ -1883,7 +1901,10 @@ function actionBar(p, c){
   return `<div class="act">
     ${termometro(p, Math.min(cp, p.myMax||cp), sugg)}
     <div class="decisionMini">
-      <span><b>Massimo per te</b> <strong>${p.myMax??cp}</strong></span>
+      <div class="decisionCore">
+        <span class="decisionLimit"><b>Max consigliato</b> <strong id="decisionMax">${p.myMax??cp}</strong></span>
+        <span class="decisionCurrent">Prezzo <strong id="decisionCurrent">${sugg}</strong> · <strong id="decisionMargin">${Math.max(0,(p.myMax??cp)-sugg)}</strong> cr di margine</span>
+      </div>
       <span class="decisionTechnical">Tecnico ${p.myMaxFactors?.maxTecnico??'—'} · Strategico ${p.myMax??'—'}</span><span class="decisionState ${p.myAction==='take'?'raise':p.myAction==='leave'?'leave':'watch'}" aria-live="polite">${p.myActionLabel||'RILANCIA'}</span>
     </div>
     <div class="factorMini">
@@ -1899,28 +1920,13 @@ function actionBar(p, c){
     <button class="oth" data-other="${p.id}">Ad altri</button>
     <button data-info="${p.id}">Statistiche</button>
     <span class="hint" id="auctionHint">${(()=>{
-      const prezzoAttuale = Math.max(1, Number(sugg)||1);
-      const d=valutaDecisioneAPrezzo(p,c,prezzoAttuale);
-      const f=p.myMaxFactors||{};
-      const tecnico=f.maxTecnico??p.max;
-      const strategico=p.myMax??tecnico;
-      const rivali=f.competitori?.length||0;
-      const alternative=Number(f.alternative??0);
-      const riserva=Math.round(f.riservaApplicata||0);
-      const base=p.mkt<=1
-        ? 'Giocatore da riempimento: il mercato lo assorbe intorno a 1 credito.'
-        : `Mercato stimato <b>${p.mkt}</b>; valore <b>${p.val}</b>; fascia statistica <b>${p.min}–${p.max}</b>.`;
-      const decisionText=d.action==='take'
-        ? `Decisione a <b>${prezzoAttuale}</b>: <b>PRENDI</b>. Al prezzo inserito il rapporto tra costo e valore è favorevole.`
-        : d.action==='leave'
-          ? `Decisione a <b>${prezzoAttuale}</b>: <b>LASCIA</b>. A questa cifra superi il limite conveniente rispetto al tuo budget o alle alternative.`
-          : `Decisione a <b>${prezzoAttuale}</b>: <b>RILANCIA</b>. A questa cifra il prezzo è ancora sostenibile, ma non conviene superare il tuo massimo di <b>${strategico}</b>.`;
-      const budgetText=cp<p.max ? ` Il budget residuo assegnabile al ruolo arriva a <b>${cp}</b>.` : '';
-      const strategyText=` Massimo tecnico <b>${tecnico}</b>; massimo strategico <b>${strategico}</b>.`;
-      const contextText=` Il calcolo considera <b>${alternative}</b> alternativa${alternative===1?'':'e'} simile, <b>${rivali}</b> rival${rivali===1?'e':'i'} realmente competitiv${rivali===1?'o':'i'} e una riserva di <b>${riserva}</b> crediti.`;
-      const formText=p.pct!=null ? ` Prima fascia: <b>${p.pct}%</b> ${p.tit?'titolare':'panchina'}${p.st?', '+p.st:''}.` : '';
-      const corrText=p.astaCorr ? ` <b>Asta reale:</b> ${p.astaCorrFonte==='ruolo'?'il ruolo sta andando':'l’asta complessiva sta andando'} ${p.astaCorr>1?'sopra':'sotto'} le attese (${p.astaCorr>1?'+':''}${Math.round((p.astaCorr-1)*100)}%).` : '';
-      return base+decisionText+budgetText+strategyText+contextText+formText+corrText;
+      const prezzoAttuale=Math.max(1,Number(sugg)||1), d=valutaDecisioneAPrezzo(p,c,prezzoAttuale);
+      const maxCons=Math.min(cp,p.myMax||cp), marg=maxCons-prezzoAttuale;
+      const range=`Range <b>${p.min}–${p.max}</b>`;
+      const market=`Mkt <b>${p.mkt}</b>`;
+      const decision=`<b>${d.label}</b>`;
+      const margText=marg>=0?`<b class="marginPositive">+${marg}</b>`:`<b class="marginNegative">${marg}</b>`;
+      return `${market} · ${range} · ${decision} · Max <b>${maxCons}</b> · Margine ${margText}`;
     })()}</span>
   </div>`;
 }
@@ -1971,30 +1977,25 @@ function aggiornaTermometro(){
   state.textContent=d.label;
   state.className='decisionState '+cls;
 
+  const maxConsigliato=Math.min(cp,p.myMax||cp);
+  const currentEl=$('#decisionCurrent');
+  const marginEl=$('#decisionMargin');
+  const maxEl=$('#decisionMax');
+  if(currentEl) currentEl.textContent=val;
+  if(maxEl) maxEl.textContent=maxConsigliato;
+  if(marginEl){
+    marginEl.textContent=Math.max(0,maxConsigliato-val);
+    marginEl.classList.toggle('over', val>maxConsigliato);
+  }
+
   const hint = $('#auctionHint');
   if(hint){
-    const f=p.myMaxFactors||{};
-    const tecnico=f.maxTecnico??p.max;
-    const strategico=p.myMax??tecnico;
-    const rivali=f.competitori?.length||0;
-    const alternative=Number(f.alternative??0);
-    const riserva=Math.round(f.riservaApplicata||0);
-    const base=p.mkt<=1
-      ? 'Giocatore da riempimento: il mercato lo assorbe intorno a 1 credito.'
-      : `Mercato stimato <b>${p.mkt}</b>; valore <b>${p.val}</b>; fascia statistica <b>${p.min}–${p.max}</b>.`;
-    const decisionText=d.action==='take'
-      ? `Decisione a <b>${val}</b>: <b>PRENDI</b>. Al prezzo inserito il rapporto tra costo e valore è favorevole.`
-      : d.action==='leave'
-        ? `Decisione a <b>${val}</b>: <b>LASCIA</b>. A questa cifra superi il limite conveniente rispetto al tuo budget o alle alternative.`
-        : `Decisione a <b>${val}</b>: <b>RILANCIA</b>. A questa cifra il prezzo è ancora sostenibile, ma non conviene superare il tuo massimo di <b>${strategico}</b>.`;
-    const budgetText=cp<p.max ? ` Il budget residuo assegnabile al ruolo arriva a <b>${cp}</b>.` : '';
-    const strategyText=` Massimo tecnico <b>${tecnico}</b>; massimo strategico <b>${strategico}</b>.`;
-    const contextText=` Il calcolo considera <b>${alternative}</b> alternativa${alternative===1?'':'e'} simile, <b>${rivali}</b> rival${rivali===1?'e':'i'} realmente competitiv${rivali===1?'o':'i'} e una riserva di <b>${riserva}</b> crediti.`;
-    const formText=p.pct!=null ? ` Prima fascia: <b>${p.pct}%</b> ${p.tit?'titolare':'panchina'}${p.st?', '+p.st:''}.` : '';
-    const corrText=p.astaCorr ? ` <b>Asta reale:</b> ${p.astaCorrFonte==='ruolo'?'il ruolo sta andando':'l’asta complessiva sta andando'} ${p.astaCorr>1?'sopra':'sotto'} le attese (${p.astaCorr>1?'+':''}${Math.round((p.astaCorr-1)*100)}%).` : '';
-    hint.innerHTML=base+decisionText+budgetText+strategyText+contextText+formText+corrText;
+    const d=valutaDecisioneAPrezzo(p,c,val);
+    const maxCons=Math.min(cp,p.myMax||cp), marg=maxCons-val;
+    hint.innerHTML=`Mkt <b>${p.mkt}</b> · Range <b>${p.min}–${p.max}</b> · <b>${d.label}</b> · Max <b>${maxCons}</b> · Margine <b class="${marg>=0?'marginPositive':'marginNegative'}">${marg>=0?'+':''}${marg}</b>`;
   }
 }
+
 
 /* ---------- rosa ---------- */
 function drawRose(){
@@ -2199,6 +2200,11 @@ $('#closeAnalysis').addEventListener('click', ()=>$('#analysisSheet').classList.
 $('#closeAnalysisTop').addEventListener('click', ()=>$('#analysisSheet').classList.remove('on'));
 $('#refreshAnalysis').addEventListener('click', drawAnalysis);
 $('#simulateTeam').addEventListener('click', simulaRosa);
+$('#openAuctionSim').addEventListener('click', ()=>$('#auctionSimSheet').classList.add('on'));
+$('#closeAuctionSim').addEventListener('click', ()=>$('#auctionSimSheet').classList.remove('on'));
+$('#closeAuctionSimTop').addEventListener('click', ()=>$('#auctionSimSheet').classList.remove('on'));
+$('#runAuctionSim').addEventListener('click', simulaScenario);
+$('#auctionSimSheet').addEventListener('click', e=>{ if(e.target.id==='auctionSimSheet') $('#auctionSimSheet').classList.remove('on'); });
 $('#analysisSheet').addEventListener('click', e=>{ if(e.target.id==='analysisSheet') $('#analysisSheet').classList.remove('on'); });
 
 $('#openTeams').addEventListener('click', apriTeams);
@@ -2237,6 +2243,61 @@ $('#assignSheet').addEventListener('click', e=>{
   chiudiAssegnazione();
   calcolaPrezzi(true); redraw();
 });
+
+/* ---------- simulazione asta V64 ---------- */
+function seededRng(seed){
+  let x=(Number(seed)||64001)>>>0;
+  return ()=>{ x=(x+0x6D2B79F5)>>>0; let t=x; t=Math.imul(t^t>>>15,1|t); t^=t+Math.imul(t^t>>>7,61|t); return ((t^t>>>14)>>>0)/4294967296; };
+}
+function scenarioCounts(key){
+  const q={P:0,D:0,C:0,A:0};
+  const map={
+    P1:{P:1},P2:{P:2},P3:{P:3},P4:{P:3},
+    D1:{P:3,D:1},D2:{P:3,D:4},D3:{P:3,D:7},D4:{P:3,D:8},
+    C1:{P:3,D:8,C:1},C2:{P:3,D:8,C:4},C3:{P:3,D:8,C:7},C4:{P:3,D:8,C:8},
+    A1:{P:3,D:8,C:8,A:1},A2:{P:3,D:8,C:8,A:3},A3:{P:3,D:8,C:8,A:5},A4:{P:3,D:8,C:8,A:6}
+  };
+  Object.assign(q,map[key]||map.P1); return q;
+}
+function scenarioLabel(key){ const el=$('#simCheckpoint option:checked'); return el?el.textContent:key; }
+function simulaScenario(){
+  const key=$('#simCheckpoint')?.value||'P1';
+  const rng=seededRng($('#simSeed')?.value||64001);
+  const counts=scenarioCounts(key), teams=LG.squadre, budget=Number(LG.budget)||1000;
+  S.mie={}; S.altrui={}; S.altruiTeam={}; S.veri={}; S.auctionHistory=[]; S.open=null;
+  const used=new Set();
+  const events=[];
+  // Per ruolo scegliamo giocatori distribuiti per qualità/prezzo, evitando duplicati.
+  for(const r of ORD){
+    const needPerTeam=counts[r]||0; if(!needPerTeam) continue;
+    const pool=P.filter(p=>p.r===r && p.mkt>1).slice().sort((a,b)=>((b.ptot||0)+(rng()-.5)*25)-((a.ptot||0)+(rng()-.5)*25));
+    let idx=0;
+    for(let team=0;team<teams;team++){
+      for(let k=0;k<needPerTeam;k++){
+        while(idx<pool.length && used.has(pool[idx].id)) idx++;
+        if(idx>=pool.length) break;
+        const p=pool[idx++]; used.add(p.id);
+        const base=Math.max(1,Math.round(Number(p.mkt)||Number(p.val)||1));
+        const factor=0.72+rng()*0.56;
+        let price=Math.max(1,Math.round(base*factor));
+        // Manteniamo il prezzo plausibile e impediamo scenari irrealistici per un singolo acquisto.
+        price=Math.min(Math.max(1,Math.round(budget*.45)),price);
+        if(team===0){ S.mie[p.id]=price; }
+        else { S.altrui[p.id]=price; S.altruiTeam[p.id]=team; }
+        S.veri[p.id]=price;
+        events.push({id:p.id,n:p.n,r:p.r,team,price,estimate:base,ratio:price/base,ts:Date.now()+events.length});
+      }
+    }
+  }
+  S.auctionHistory=events.slice(-500);
+  calcolaPrezzi(true);
+  redraw();
+  const currentPhase=faseGlobaleAsta();
+  const roleSummary=ORD.map(r=>`<div><b>${RN[r]}</b><span>${counts[r]||0}/${LG.slot[r]} per squadra</span></div>`).join('');
+  const rivali=Object.keys(byId).length ? (P.filter(p=>p.r===currentPhase && S.mie[p.id]===undefined && S.altrui[p.id]===undefined && p.mkt>1).slice(0,1)[0]) : null;
+  $('#auctionSimResult').innerHTML=`<div class="simulationSummary"><b>${escHtml(scenarioLabel(key))}</b><span>Seed ${escHtml($('#simSeed')?.value||'64001')} · ${events.length} acquisti</span><strong>Fase attuale: ${currentPhase?RN[currentPhase]:'completata'}</strong></div><div class="scenarioRoles">${roleSummary}</div>${rivali?`<div class="sub" style="margin-top:10px">Prossimo test: <b>${escHtml(rivali.n)}</b> · ${RN[rivali.r]} · rivali potenziali: ${rivali.myMaxFactors?.competitori?.length??'—'}</div>`:''}<div class="sub" style="margin-top:10px">Scenario applicato all'asta corrente. Usa "Azzera" per tornare vuoto.</div>`;
+  drawTeams(); drawAnalysis();
+}
 
 /* ---------- click ---------- */
 list.addEventListener('click', e=>{
