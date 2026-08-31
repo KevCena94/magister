@@ -1106,3 +1106,61 @@ button, input, select, textarea { max-width:100%; }
 .decisionTrace span{white-space:nowrap}
 .decisionTrace b{color:var(--text)}
 @media (max-width:700px){.decisionTrace{gap:5px 9px;font-size:.68rem;padding:6px 7px}}
+
+/* ---------- Piano strategico in primo piano V57 ---------- */
+.strategyHomeWrap{display:block;min-width:0}
+.strategyHome{margin:0;padding:0;border:0;background:transparent;box-shadow:none}
+.strategyHome .strategyHero{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 14px 12px;border:1px solid var(--line);border-radius:14px 14px 0 0;background:var(--surf);border-left:4px solid var(--gold)}
+.strategyHero>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.strategyEyebrow{font-size:9px;letter-spacing:.08em;color:var(--mut);font-weight:900}
+.strategyHero b{font-size:18px;line-height:1.15}
+.strategyHero span:last-child{font-size:10.5px;color:var(--mut);line-height:1.35}
+.strategyHero>strong{font-family:var(--mono);font-size:24px;white-space:nowrap}
+.strategyHero>strong small{font-size:11px;color:var(--mut);font-weight:600}
+.strategyQuick{display:grid;grid-template-columns:1.25fr 1fr .65fr;border:1px solid var(--line);border-top:0;background:var(--surf2)}
+.strategyQuick>div{padding:9px 10px;border-right:1px solid var(--line);min-width:0}
+.strategyQuick>div:last-child{border-right:0}
+.strategyQuick small{display:block;color:var(--mut);font-size:9.5px}
+.strategyQuick b{display:block;margin-top:2px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strategyNext{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px;border:1px solid var(--line);border-top:0;background:var(--surf)}
+.strategyNext span{font-size:10px;color:var(--mut)}
+.strategyNext b{font-size:11px;text-align:right}
+.strategyHome .strategyOpps{margin-top:0;border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;overflow:hidden;background:var(--surf)}
+.strategyHome .strategyOpps h4{padding:9px 10px;margin:0;background:var(--surf2);font-size:11px}
+.strategyHome .strategyOpp{padding:8px 10px}
+.strategyHome .strategyEmpty{margin:8px;border:1px dashed var(--line)}
+.strategyDetail{margin-top:14px}
+@media(min-width:1024px){
+  .body{grid-template-columns:minmax(0,1fr) 320px;align-items:start}
+  .strategyHomeWrap{grid-column:2;grid-row:2;margin:0 16px 90px}
+  .rose{grid-column:2;grid-row:1}
+  .strategyHome{margin-top:0}
+}
+@media(max-width:1023px){
+  .strategyHomeWrap{display:block;padding:0 12px 14px}
+  .strategyHome{margin:0}
+  .rose{grid-column:1}
+  .strategyHomeWrap{grid-column:1}
+}
+@media(max-width:700px){
+  .strategyQuick{grid-template-columns:1fr 1fr}
+  .strategyQuick>div:last-child{grid-column:1/-1;border-top:1px solid var(--line);border-right:0}
+  .strategyHero>strong{font-size:21px}
+}
+
+
+/* V58 prep: desktop right rail keeps Piano Strategico immediately under La mia rosa. */
+.rightRail{min-width:0;display:flex;flex-direction:column;gap:12px;}
+@media(min-width:1024px){
+  .body{grid-template-columns:minmax(0,1fr) 380px;align-items:start;}
+  .rightRail{grid-column:2;grid-row:1;margin:0 16px 90px;}
+  .rightRail .rose{grid-column:auto;grid-row:auto;margin:0;}
+  .rightRail .strategyHomeWrap{grid-column:auto;grid-row:auto;margin:0;}
+}
+@media(min-width:1440px){
+  .body{grid-template-columns:minmax(0,1fr) 380px;}
+}
+@media(max-width:1023px){
+  .rightRail{grid-column:1;grid-row:auto;padding:0 12px 14px;gap:0;}
+  .rightRail .strategyHomeWrap{padding:0;}
+}

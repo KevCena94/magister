@@ -125,7 +125,12 @@
 
 <div class="body">
   <div class="list" id="list"></div>
-  <aside class="rose" id="rose"></aside>
+  <aside class="rightRail" aria-label="La mia rosa e piano strategico">
+    <div class="rose" id="rose"></div>
+    <div class="strategyHomeWrap" aria-label="Piano strategico in primo piano">
+      <section id="strategyHome" class="strategyPanel strategyHome" aria-label="Piano strategico"></section>
+    </div>
+  </aside>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -213,7 +218,7 @@
 
 <div class="sheet" id="analysisSheet"><div class="card analysisCard">
   <div class="analysisHead"><div><h3>Analisi asta</h3><div class="sub">Decisioni rapide basate su budget, domanda, prezzi osservati e qualità dei giocatori rimasti.</div></div><button class="close" id="closeAnalysisTop">Chiudi</button></div>
-  <section id="strategyPanel" class="strategyPanel" aria-label="Piano strategico"></section>
+  <section id="strategyPanel" class="strategyPanel strategyDetail" aria-label="Piano strategico dettagliato"></section>
   <div id="analysisAlerts" class="analysisAlerts"></div>
   <div id="analysisRoles" class="analysisRoles"></div>
   <div class="analysisActions"><button class="ok" id="simulateTeam">Simula la mia rosa</button><button id="refreshAnalysis">Aggiorna analisi</button></div>
@@ -1076,6 +1081,10 @@ function costruisciPianoStrategico(){
   const occasioni=[];
   P.forEach(p=>{
     if(S.mie[p.id]!==undefined || S.altrui[p.id]!==undefined || p.mkt<=1) return;
+    // Le occasioni del Piano Strategico seguono la fase globale dell'asta:
+    // P -> solo portieri, D -> solo difensori, C -> solo centrocampisti, A -> solo attaccanti.
+    // Se l'asta è completata non mostriamo nuove occasioni.
+    if(!fase || p.r!==fase) return;
     const rr=ruoli.find(x=>x.r===p.r);
     if(!rr || rr.mancanti<=0 || rr.cap<=0 || p.mkt>rr.cap) return;
     const convenienza=Number(p.val)>0 ? Number(p.val)/Math.max(1,Number(p.mkt)) : 1;
@@ -1089,13 +1098,20 @@ function costruisciPianoStrategico(){
 }
 
 function drawPianoStrategico(){
-  const box=$('#strategyPanel'); if(!box) return;
+  const targets=['strategyHome','strategyPanel'].map(id=>$('#'+id)).filter(Boolean);
+  if(!targets.length) return;
   const a=costruisciPianoStrategico();
+  const faseLabel=a.fase?RN[a.fase]:'Asta completata';
+  const faseShort=a.fase||'';
+  const priorita=a.prioritaTop ? `${RN[a.prioritaTop.r]} · ${a.prioritaTop.mancanti} slot` : 'Rosa completa';
   const spendibile=Math.max(0,a.c.tot.resid-Math.max(0,a.c.tot.liberi-1));
-  const priorita=a.prioritaTop ? `${RN[a.prioritaTop.r]} · ${a.prioritaTop.mancanti} slot da coprire` : 'Rosa completa'; const faseLabel=a.fase?RN[a.fase]:'Asta completata';
-  const roleRows=a.ruoli.map(x=>`<div class="strategyRole role-${x.r}"><div class="strategyRoleHead"><b>${RN[x.r]}</b><span>${x.mancanti?`${x.mancanti} da comprare`:'completo'}</span></div><div class="strategyRoleStats"><span>budget reparto<strong>${Math.round(x.quota)}</strong></span><span>max singolo<strong>${x.cap||'—'}</strong></span><span>pressione<strong>${x.pressione.toFixed(2)}×</strong></span><span>premium<strong>${x.premium}</strong></span></div></div>`).join('');
+  const roleRows=a.ruoli.map(x=>`<div class="strategyRole role-${x.r}"><div class="strategyRoleHead"><b>${RN[x.r]}</b><span>${x.mancanti?`${x.mancanti} da comprare`:'completo'}</span></div><div class="strategyRoleStats"><span>budget<strong>${Math.round(x.quota)}</strong></span><span>max<strong>${x.cap||'—'}</strong></span><span>pressione<strong>${x.pressione.toFixed(2)}×</strong></span><span>premium<strong>${x.premium}</strong></span></div></div>`).join('');
   const oppRows=a.occasioni.map(x=>`<div class="strategyOpp"><div><b>${escHtml(x.p.n)}</b><span>${RN[x.p.r]} · valore ${Math.round(x.p.val)} · mercato ${Math.round(x.p.mkt)}</span></div><strong>+${Math.round((x.convenienza-1)*100)}%</strong></div>`).join('');
-  box.innerHTML=`<div class="strategyTitle"><div><b>🎯 Piano strategico</b><span>Budget e priorità per i prossimi acquisti</span></div><strong>${Math.round(a.c.tot.resid)} cr</strong></div><div class="strategySummary"><div><small>Fase asta</small><b>${escHtml(faseLabel)}</b></div><div><small>Priorità tua</small><b>${escHtml(priorita)}</b></div><div><small>Davvero spendibili ora</small><b>${Math.round(spendibile)} cr</b></div><div><small>Slot residui</small><b>${Math.max(0,a.c.tot.liberi)}</b></div></div><div class="strategyRoles">${roleRows}</div><div class="strategyOpps"><h4>🟢 Occasioni compatibili</h4>${oppRows||'<div class="strategyEmpty">Nessuna occasione evidente entro il massimo strategico attuale.</div>'}</div>`;
+  const faseIcon={P:'🧤',D:'🛡️',C:'🎯',A:'⚡'}[faseShort]||'✓';
+  const homeAction=a.occasioni[0] ? `Guarda ${a.occasioni[0].p.n}` : (a.fase ? `Cerca ${RN[a.fase]}` : 'Rosa completata');
+  const homeHtml=`<div class="strategyHero"><div><span class="strategyEyebrow">FASE GLOBALE</span><b>${faseIcon} ${escHtml(faseLabel)}</b><span>${a.fase?'Le occasioni sono limitate a questo reparto.':'Nessun reparto da completare.'}</span></div><strong>${Math.round(a.c.tot.resid)}<small> cr</small></strong></div><div class="strategyQuick"><div><small>Priorità</small><b>${escHtml(priorita)}</b></div><div><small>Spendibili ora</small><b>${Math.round(spendibile)} cr</b></div><div><small>Slot residui</small><b>${Math.max(0,a.c.tot.liberi)}</b></div></div><div class="strategyNext"><span>👉 Prossima mossa</span><b>${escHtml(homeAction)}</b></div><div class="strategyOpps"><h4>🟢 Occasioni compatibili</h4>${oppRows||'<div class="strategyEmpty">Nessuna occasione evidente entro il massimo strategico attuale.</div>'}</div>`;
+  const detailHtml=`<div class="strategyTitle"><div><b>🎯 Piano strategico</b><span>Budget e priorità per i prossimi acquisti</span></div><strong>${Math.round(a.c.tot.resid)} cr</strong></div><div class="strategySummary"><div><small>Fase asta</small><b>${escHtml(faseLabel)}</b></div><div><small>Priorità tua</small><b>${escHtml(priorita)}</b></div><div><small>Davvero spendibili ora</small><b>${Math.round(spendibile)} cr</b></div><div><small>Slot residui</small><b>${Math.max(0,a.c.tot.liberi)}</b></div></div><div class="strategyRoles">${roleRows}</div><div class="strategyOpps"><h4>🟢 Occasioni compatibili</h4>${oppRows||'<div class="strategyEmpty">Nessuna occasione evidente entro il massimo strategico attuale.</div>'}</div>`;
+  targets.forEach(box=>box.innerHTML=box.id==='strategyHome'?homeHtml:detailHtml);
 }
 function drawAnalysis(){
   const a=costruisciAnalisi();
@@ -2566,7 +2582,7 @@ document.addEventListener('change', e=>{
 });
 
 function redraw(){
-  drawTop(); drawList(); drawRose();
+  drawTop(); drawList(); drawRose(); drawPianoStrategico();
   const c = conti();
   $('#fab').textContent = `Rosa ${c.tot.n}/${c.tot.slot}`;
   if($('#teamsSheet')?.classList.contains('on')) drawTeams();
