@@ -1884,7 +1884,7 @@ function actionBar(p, c){
     ${termometro(p, Math.min(cp, p.myMax||cp), sugg)}
     <div class="decisionMini">
       <span><b>Massimo per te</b> <strong>${p.myMax??cp}</strong></span>
-      <span class="decisionTechnical">Tecnico ${p.myMaxFactors?.maxTecnico??'—'} · Strategico ${p.myMax??'—'}</span><span class="decisionState ${p.myAction==='take'?'raise':p.myAction==='leave'?'leave':'watch'}">${p.myActionLabel||'RILANCIA'}</span>
+      <span class="decisionTechnical">Tecnico ${p.myMaxFactors?.maxTecnico??'—'} · Strategico ${p.myMax??'—'}</span><span class="decisionState ${p.myAction==='take'?'raise':p.myAction==='leave'?'leave':'watch'}" aria-live="polite">${p.myActionLabel||'RILANCIA'}</span>
     </div>
     <div class="factorMini">
       <span>Mercato <b>${p.attesoPrezzo||p.mkt}</b></span>
@@ -2326,6 +2326,7 @@ $('#fab').addEventListener('click', ()=> rosaApri(!$('#rose').classList.contains
 $('#scrim').addEventListener('click', ()=> rosaApri(false));
 
 /* il pannello opzioni esiste solo sul telefono: altrove i controlli stanno già in vista */
+// V59: il consiglio operativo (PRENDI/RILANCIA/LASCIA) segue in tempo reale il prezzo digitato.
 document.addEventListener('input', e=>{ if(e.target.id==='pr') aggiornaTermometro(); });
 
 /* Sul telefono i reparti partono chiusi: la testata è fissa e ogni pixel che

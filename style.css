@@ -1162,5 +1162,7 @@ button, input, select, textarea { max-width:100%; }
 }
 @media(max-width:1023px){
   .rightRail{grid-column:1;grid-row:auto;padding:0 12px 14px;gap:0;}
-  .rightRail .strategyHomeWrap{padding:0;}
+  /* Spazio finale dedicato alle due azioni flottanti: evita che l'ultima
+     occasione del Piano Strategico venga coperta dalle icone inferiori. */
+  .rightRail .strategyHomeWrap{padding:0 0 max(86px,calc(70px + env(safe-area-inset-bottom)));} 
 }
