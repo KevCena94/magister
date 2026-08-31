@@ -1349,10 +1349,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .playerRivals{margin:10px 0 11px;padding:10px 11px;border:1px solid var(--line);border-radius:11px;background:var(--surf)}
 .playerRivalsHead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
 .playerRivalsHead b{font-size:11px}.playerRivalsHead span{font-size:9.5px;color:var(--mut)}
-.playerRivalRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:7px 0;border-top:1px solid var(--line)}
+.playerRivalsScroll{height:178px;max-height:178px;overflow-y:scroll;padding-right:5px;scrollbar-width:thin;scrollbar-gutter:stable}.playerRivalsScroll::-webkit-scrollbar{width:7px}.playerRivalsScroll::-webkit-scrollbar-thumb{background:var(--line2);border-radius:99px}.playerRivalRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:7px 0;border-top:1px solid var(--line)}
 .playerRivalRow:first-of-type{border-top:0}.playerRivalWho{display:flex;gap:7px;align-items:baseline;min-width:0}.playerRivalWho b{font-size:11px}.playerRivalWho span{font-size:9.5px;color:var(--mut)}
 .playerRivalBid{text-align:right;display:flex;flex-direction:column;gap:1px}.playerRivalBid strong{font-size:12px;color:var(--gold)}.playerRivalBid span{font-size:9.5px;color:var(--mut)}
-.playerRivalWhy{grid-column:1/-1;font-size:9.5px;color:var(--mut2)}
+.playerRivalWhy{grid-column:1/-1;font-size:9.5px;color:var(--mut2)}.playerRivalRow.isInactive{opacity:.58}
 .playerRivalsNote,.playerRivalsEmpty{font-size:9.5px;color:var(--mut2);line-height:1.4;margin-top:6px}
-@media(max-width:599px){.playerRivals{padding:9px 10px}.playerRivalRow{grid-template-columns:minmax(0,1fr) auto}}
+@media(max-width:599px){.playerRivals{padding:9px 10px}.playerRivalsScroll{height:170px;max-height:170px}.playerRivalRow{grid-template-columns:minmax(0,1fr) auto}}
 @media(min-width:1560px){.utilitybar{max-width:1500px;width:100%;box-sizing:border-box;margin-left:auto;margin-right:auto;padding-left:16px;padding-right:0}}

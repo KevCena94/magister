@@ -2768,19 +2768,32 @@ function interessiPerGiocatore(p){
   const out=[];
   for(let team=1;team<Number(LG.squadre||8);team++){
     const x=profiloInteresseRivale(team,p);
-    if(x) out.push(x);
+    if(x){ out.push(x); continue; }
+    // Mostra sempre tutti i 7 rivali: se una squadra ha già completato
+    // il ruolo, non ha slot utili o non può permettersi il giocatore,
+    // resta comunque visibile come concorrente non attivo.
+    const r=riepilogoSquadra(team);
+    const ruolo=p.r, slotRuolo=Number(LG.slot[ruolo])||0;
+    const mancanti=Math.max(0,slotRuolo-(r.perRuolo[ruolo]||0));
+    const maxBid=Math.max(0,r.crediti-Math.max(0,r.slot-1));
+    const base=Math.max(1,Number(p.mkt)||Number(p.val)||1);
+    const noSlot=mancanti<=0 || r.slot<=0;
+    const noBudget=maxBid<1;
+    out.push({team,r,prof:profiloSquadra(team),mancanti,maxBid,base,predicted:0,interest:0,confidence:18,roleRatio:1,roleSamples:0,phase:faseGlobaleAsta(),needRatio:0,noSlot,noBudget});
   }
   return out.sort((a,b)=>b.interest-a.interest || b.predicted-a.predicted);
 }
 function bloccoRivaliGiocatore(p){
-  const arr=interessiPerGiocatore(p).slice(0,4);
+  const arr=interessiPerGiocatore(p);
   if(!arr.length) return `<div class="playerRivals"><div class="playerRivalsHead"><b>Rivali su questo giocatore</b></div><div class="playerRivalsEmpty">Nessun avversario ha al momento una combinazione credibile di slot e budget per questo ruolo.</div></div>`;
   const rows=arr.map(x=>{
     const need=x.mancanti===1?'1 slot':`${x.mancanti} slot`;
     const hist=x.roleSamples?`${x.roleRatio>=1?'+':''}${Math.round((x.roleRatio-1)*100)}% sul ruolo`:'profilo ancora iniziale';
-    return `<div class="playerRivalRow"><div class="playerRivalWho"><b>${escHtml(nomeSquadra(x.team))}</b><span>${x.r.crediti} cr · ${need}</span></div><div class="playerRivalBid"><strong>~${x.predicted} cr</strong><span>${Math.round(x.interest)}% interesse</span></div><div class="playerRivalWhy">${escHtml(hist)} · max sostenibile ${x.maxBid} · confidenza ${x.confidence}%</div></div>`;
+    const inactive=x.noSlot||x.noBudget||x.interest===0;
+    const reason=x.noSlot?'ruolo completo':x.noBudget?'budget insufficiente':hist;
+    return `<div class="playerRivalRow ${inactive?'isInactive':''}"><div class="playerRivalWho"><b>${escHtml(nomeSquadra(x.team))}</b><span>${x.r.crediti} cr · ${x.noSlot?'nessuno slot':need}</span></div><div class="playerRivalBid"><strong>${x.predicted?`~${x.predicted} cr`:'—'}</strong><span>${x.interest?`${Math.round(x.interest)}% interesse`:'non competitivo'}</span></div><div class="playerRivalWhy">${escHtml(reason)} · max sostenibile ${x.maxBid} · confidenza ${x.confidence}%</div></div>`;
   }).join('');
-  return `<div class="playerRivals"><div class="playerRivalsHead"><b>Rivali su questo giocatore</b><span>stima dinamica</span></div>${rows}<div class="playerRivalsNote">La stima combina necessità del ruolo, budget/slot residui, comportamento storico e prezzo di mercato. Non significa che il rivale lo comprerà: indica chi ha oggi i presupposti per essere competitivo e quanto potrebbe arrivare a offrire.</div></div>`;
+  return `<div class="playerRivals"><div class="playerRivalsHead"><b>Rivali su questo giocatore</b><span>stima dinamica · ${arr.length}/7</span></div><div class="playerRivalsScroll">${rows}</div><div class="playerRivalsNote">La stima combina necessità del ruolo, budget/slot residui, comportamento storico e prezzo di mercato. Non significa che il rivale lo comprerà: indica chi ha oggi i presupposti per essere competitivo e quanto potrebbe arrivare a offrire.</div></div>`;
 }
 
 function previsioniRivaliDistinte(){
