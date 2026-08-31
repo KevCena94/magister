@@ -121,6 +121,11 @@
   </div>
 </div>
 
+<div class="utilitybar" aria-label="Strumenti asta">
+  <button class="utility primary" id="rivaliBtn">Rivali <span id="rivaliBadge">7</span></button>
+  <button class="utility" id="topSimBtn">Simulazione</button>
+</div>
+
 <div class="chips" id="chips"></div>
 
 <div class="body">
@@ -287,6 +292,13 @@
   </div>
   <button class="close" data-chiudi="ocrSheet">Chiudi</button>
 </div></div>
+<div class="sheet" id="rivaliSheet"><div class="card">
+  <h3>Rivali</h3>
+  <div class="sub">Situazione dei 7 avversari: budget residuo, slot liberi e giocatori acquistati.</div>
+  <div id="rivaliList"></div>
+  <button class="close" data-chiudi="rivaliSheet">Chiudi</button>
+</div></div>
+
 <datalist id="dlGiocatori"></datalist>
 
 <script>
@@ -1914,6 +1926,7 @@ function actionBar(p, c){
       <span>Rivali reali <b>${p.myMaxFactors?.competitori?.length??'—'}</b></span>
       <span>Alternative <b>${p.myMaxFactors?.alternative??'—'}</b></span>
     </div>
+    ${bloccoRivaliGiocatore(p)}
     <span class="lbl">Pagato</span>
     <input type="number" inputmode="numeric" id="pr" value="${sugg}" min="1" max="${c.tot.resid}">
     <button class="ok" data-buy="${p.id}">Preso io</button>
@@ -2185,11 +2198,12 @@ function apriAssegnazione(id, prezzo){
     const ruoloTot=Number(LG.slot[p.r])||0;
     const ruoloMancanti=Math.max(0,ruoloTot-r.perRuolo[p.r]);
     const piena=r.slot<=0;
-    const disabled=piena?' disabled aria-disabled="true"':'';
+    const troppoCaro=r.crediti<Number(prezzo);
+    const disabled=(piena||troppoCaro)?' disabled aria-disabled="true"':'';
     return `<button type="button" class="teamChoice${piena?' disabled':''}" data-assign-team="${idx}"${disabled}>
       <b>${escHtml(nome)}</b>
       <span>${r.crediti} crediti · ${r.slot} slot liberi</span>
-      <small>${p.r}: ${ruoloMancanti} slot ${ruoloMancanti===1?'libero':'liberi'}</small>
+      <small>${p.r}: ${ruoloMancanti} slot ${ruoloMancanti===1?'libero':'liberi'}${troppoCaro?' · budget insufficiente':''}</small>
     </button>`;
   }).join('');
   $('#assignSheet').classList.add('on');
@@ -2263,39 +2277,46 @@ function scenarioLabel(key){ const el=$('#simCheckpoint option:checked'); return
 function simulaScenario(){
   const key=$('#simCheckpoint')?.value||'P1';
   const rng=seededRng($('#simSeed')?.value||64001);
-  const counts=scenarioCounts(key), teams=LG.squadre, budget=Number(LG.budget)||1000;
+  const counts=scenarioCounts(key), teams=Math.max(1,Number(LG.squadre)||8), budget=Math.max(1,Number(LG.budget)||1000);
   S.mie={}; S.altrui={}; S.altruiTeam={}; S.veri={}; S.auctionHistory=[]; S.open=null;
-  const used=new Set();
-  const events=[];
-  // Per ruolo scegliamo giocatori distribuiti per qualità/prezzo, evitando duplicati.
+  const used=new Set(), spent=Array(teams).fill(0), per=Array.from({length:teams},()=>({P:0,D:0,C:0,A:0})), events=[];
+  const slotTot=ORD.reduce((a,r)=>a+Number(LG.slot[r]||0),0);
   for(const r of ORD){
-    const needPerTeam=counts[r]||0; if(!needPerTeam) continue;
-    const pool=P.filter(p=>p.r===r && p.mkt>1).slice().sort((a,b)=>((b.ptot||0)+(rng()-.5)*25)-((a.ptot||0)+(rng()-.5)*25));
+    const need=counts[r]||0; if(!need) continue;
+    const pool=P.filter(p=>p.r===r&&p.mkt>1).slice().sort((a,b)=>(Number(b.ptot)||0)-(Number(a.ptot)||0));
     let idx=0;
     for(let team=0;team<teams;team++){
-      for(let k=0;k<needPerTeam;k++){
-        while(idx<pool.length && used.has(pool[idx].id)) idx++;
+      for(let k=0;k<need;k++){
+        while(idx<pool.length&&used.has(pool[idx].id)) idx++;
         if(idx>=pool.length) break;
-        const p=pool[idx++]; used.add(p.id);
+        const p=pool[idx];
+        const usedSlots=Object.values(per[team]).reduce((a,x)=>a+x,0);
+        const remainingSlots=Math.max(0,slotTot-usedSlots-1);
+        const reserve=remainingSlots;
         const base=Math.max(1,Math.round(Number(p.mkt)||Number(p.val)||1));
-        const factor=0.72+rng()*0.56;
-        let price=Math.max(1,Math.round(base*factor));
-        // Manteniamo il prezzo plausibile e impediamo scenari irrealistici per un singolo acquisto.
-        price=Math.min(Math.max(1,Math.round(budget*.45)),price);
-        if(team===0){ S.mie[p.id]=price; }
-        else { S.altrui[p.id]=price; S.altruiTeam[p.id]=team; }
+        const raw=Math.max(1,Math.round(base*(0.72+rng()*0.56)));
+        const maxPay=Math.min(budget-spent[team], budget-reserve, Math.max(1,Math.round(Number(p.max)||base)));
+        const price=Math.min(raw,maxPay);
+        idx++;
+        if(price<1 || spent[team]+price>budget || budget-(spent[team]+price)<reserve) continue;
+        used.add(p.id); spent[team]+=price; per[team][r]++;
+        if(team===0) S.mie[p.id]=price; else { S.altrui[p.id]=price; S.altruiTeam[p.id]=team; }
         S.veri[p.id]=price;
         events.push({id:p.id,n:p.n,r:p.r,team,price,estimate:base,ratio:price/base,ts:Date.now()+events.length});
       }
     }
   }
+  if(spent.some(v=>v>budget)){
+    S.mie={};S.altrui={};S.altruiTeam={};S.veri={};S.auctionHistory=[];
+    alert(`Simulazione annullata: una squadra supererebbe il budget massimo di ${budget} crediti.`);
+    calcolaPrezzi(true); redraw(); return;
+  }
   S.auctionHistory=events.slice(-500);
-  calcolaPrezzi(true);
-  redraw();
+  calcolaPrezzi(true); redraw();
   const currentPhase=faseGlobaleAsta();
   const roleSummary=ORD.map(r=>`<div><b>${RN[r]}</b><span>${counts[r]||0}/${LG.slot[r]} per squadra</span></div>`).join('');
-  const rivali=Object.keys(byId).length ? (P.filter(p=>p.r===currentPhase && S.mie[p.id]===undefined && S.altrui[p.id]===undefined && p.mkt>1).slice(0,1)[0]) : null;
-  $('#auctionSimResult').innerHTML=`<div class="simulationSummary"><b>${escHtml(scenarioLabel(key))}</b><span>Seed ${escHtml($('#simSeed')?.value||'64001')} · ${events.length} acquisti</span><strong>Fase attuale: ${currentPhase?RN[currentPhase]:'completata'}</strong></div><div class="scenarioRoles">${roleSummary}</div>${rivali?`<div class="sub" style="margin-top:10px">Prossimo test: <b>${escHtml(rivali.n)}</b> · ${RN[rivali.r]} · rivali potenziali: ${rivali.myMaxFactors?.competitori?.length??'—'}</div>`:''}<div class="sub" style="margin-top:10px">Scenario applicato all'asta corrente. Usa "Azzera" per tornare vuoto.</div>`;
+  const next=P.find(p=>p.r===currentPhase&&S.mie[p.id]===undefined&&S.altrui[p.id]===undefined&&p.mkt>1);
+  $('#auctionSimResult').innerHTML=`<div class="simulationSummary"><b>${escHtml(scenarioLabel(key))}</b><span>Seed ${escHtml($('#simSeed')?.value||'64001')} · ${events.length} acquisti</span><strong>Fase attuale: ${currentPhase?RN[currentPhase]:'completata'}</strong></div><div class="scenarioRoles">${roleSummary}</div>${next?`<div class="sub" style="margin-top:10px">Prossimo test: <b>${escHtml(next.n)}</b> · ${RN[next.r]}</div>`:''}<div class="sub" style="margin-top:10px">Nessuna squadra può superare ${budget} crediti: ogni acquisto è validato anche rispetto agli slot ancora da riempire.</div>`;
   drawTeams(); drawAnalysis();
 }
 
@@ -2667,5 +2688,145 @@ calcolaPrezzi(false, true); redraw();
 <section id="btDemo" aria-label="Demo backtesting e profilazione"><h3>🧪 Demo Backtesting & Profilazione</h3><div class="bt-sub">Demo isolata: non modifica l'asta reale. Aggiungi progressivamente 5 acquisti simulati.</div><div class="bt-grid"><div class="bt-card"><div class="bt-sub">Acquisti</div><div class="bt-big" id="btN">0</div></div><div class="bt-card"><div class="bt-sub">Errore medio</div><div class="bt-big" id="btErr">—</div></div><div class="bt-card"><div class="bt-sub">Profilo</div><div class="bt-big" id="btProfile">Nessuno</div></div><div class="bt-card"><div class="bt-sub">Confidenza</div><div class="bt-big" id="btConf">0%</div><div class="bt-bar"><div class="bt-fill" id="btFill"></div></div></div></div><div class="bt-status" id="btStatus">Nessun profilo: servono almeno 4 acquisti.</div><div class="bt-list" id="btRows"></div><button class="bt-btn" id="btRun">▶ Avvia demo</button></section>
 <script>
 (function(){const s=[["Lautaro",62,71,"A"],["Vlahovic",55,63,"A"],["Barella",39,34,"C"],["Theo",47,52,"D"],["Calhanoglu",42,48,"C"]];let n=0;function r(){const a=s.slice(0,n),e=a.length?a.reduce((z,x)=>z+Math.abs(x[2]-x[1])/x[1],0)/a.length:0,c=n<3?0:n===3?35:n===4?65:82;let p="Nessuno",t="Nessun profilo: servono almeno 4 acquisti.";if(n===3){p="Preliminare";t="Profilo iniziale disponibile (confidenza bassa)."}if(n===4){p="In formazione";t="Profilo attivo: i dati iniziano a influenzare la previsione."}if(n===5){p="Affidabile";t="Profilo affidabile: aggressività e deviazione dal mercato misurabili."}btN.textContent=n;btErr.textContent=n?(e*100).toFixed(1)+"%":"—";btProfile.textContent=p;btConf.textContent=c+"%";btFill.style.width=c+"%";btStatus.textContent=t;btRows.innerHTML=a.map(x=>{let d=(x[2]-x[1])/x[1]*100;return `<div class="bt-row"><span><b>${x[0]}</b> · ${x[3]} · stima ${x[1]}</span><span>reale ${x[2]} · ${d>=0?"+":""}${d.toFixed(1)}%</span></div>`}).join("")}btRun.addEventListener("click",()=>{n=(n+1)%6;btRun.textContent=n===0?"▶ Avvia demo":n<5?"＋ Aggiungi acquisto":"↻ Ricomincia";r()});r()})();</script>
+<script>
+/* V65: Rivali. La base funzionale e grafica è la V64; qui aggiungiamo solo il pannello. */
+function initRivaliV65(){
+  if(!Array.isArray(S.squadraNomi)) S.squadraNomi=normalizzaNomiSquadre([],LG.squadre);
+  S.squadraNomi=normalizzaNomiSquadre(S.squadraNomi,LG.squadre);
+  if(!S.altruiTeam) S.altruiTeam={};
+}
+function previsioneRivale(team){
+  const budgetTot=Math.max(1,Number(LG.budget)||1000);
+  const r=riepilogoSquadra(team);
+  const fase=faseGlobaleAsta();
+  const prof=profiloSquadra(team);
+  const ruoloPool=ORD.filter(role=>r.perRuolo[role]<Number(LG.slot[role]||0));
+  const ruolo=fase && ruoloPool.includes(fase) ? fase : (fase && ruoloPool.includes(fase)?fase:ruoloPool.find(x=>r.perRuolo[x]<Number(LG.slot[x]||0)));
+  if(!ruolo || r.slot<=0 || r.crediti<=r.slot-1) return null;
+  const roleMissing=Math.max(0,Number(LG.slot[ruolo]||0)-r.perRuolo[ruolo]);
+  const roleRatio=prof.byRole[ruolo]?.ratio || prof.avg || 1;
+  const aggrFactor=0.82+(Math.max(0,Math.min(100,prof.aggress))/100)*0.30;
+  const histFactor=limite(roleRatio,0.72,1.38);
+  const budgetFactor=limite(0.90+((r.crediti/budgetTot)-0.50)*0.22,0.88,1.12);
+  const needFactor=1+0.08*(roleMissing/Math.max(1,Number(LG.slot[ruolo])||1));
+  const candidates=giocatoriDisponibiliRuolo(ruolo).filter(p=>{
+    const base=Math.max(1,Math.round(Number(p.mkt)||Number(p.val)||1));
+    const cap=Math.min(Number(p.max)||base, r.crediti-Math.max(0,r.slot-1));
+    return cap>=1 && base>1;
+  }).map(p=>{
+    const base=Math.max(1,Number(p.mkt)||Number(p.val)||1);
+    const affordability=Math.min(1,(r.crediti-Math.max(0,r.slot-1))/Math.max(1,base));
+    const valueRatio=Number(p.val)>0&&base>0?Number(p.val)/base:1;
+    const expected=Number(p.ptot)||Number(p.pva)||0;
+    const quality=limite((valueRatio-0.75)*1.8,0,1.5);
+    const fit=0.65*quality+0.35*limite(affordability,0,1);
+    const raw=base*aggrFactor*histFactor*budgetFactor*needFactor;
+    const cap=Math.min(Number(p.max)||raw,r.crediti-Math.max(0,r.slot-1));
+    const predicted=Math.max(1,Math.min(Math.round(raw),Math.max(1,Math.floor(cap))));
+    const score=fit*0.55+limite(expected/300,0,1)*0.20+limite(predicted/Math.max(1,r.crediti),0,1)*0.05+(p.pct!=null?Number(p.pct)/100:0.5)*0.10+(ruolo===fase?0.10:0);
+    return {p,base,predicted,score};
+  }).sort((a,b)=>b.score-a.score);
+  const best=candidates[0];
+  if(!best) return null;
+  const storico=prof.n?`Profilo su ${prof.n} acquisti: ${Math.round(prof.aggress)}% aggressività, ${Math.round((roleRatio-1)*100)}% sul ruolo ${RN[ruolo]}.`:`Profilo ancora debole: stima basata soprattutto su budget, slot e mercato.`;
+  const confidence=Math.max(15,Math.round(prof.conf||15));
+  return {ruolo,best,prof,confidence,storico,alternatives:candidates.slice(1,3)};
+}
+function profiloInteresseRivale(team,p){
+  const r=riepilogoSquadra(team), budgetTot=Number(LG.budget)||1000;
+  const ruolo=p.r;
+  const slotRuolo=Number(LG.slot[ruolo])||0;
+  const mancanti=Math.max(0,slotRuolo-(r.perRuolo[ruolo]||0));
+  if(mancanti<=0 || r.slot<=0) return null;
+  const maxBid=Math.max(0,Math.min(budgetTot,r.crediti-Math.max(0,r.slot-1)));
+  const base=Math.max(1,Number(p.mkt)||Number(p.val)||1);
+  if(maxBid<1) return null;
+  const prof=profiloSquadra(team);
+  const roleHist=prof.byRole[ruolo];
+  const roleRatio=roleHist?.ratio||prof.avg||1;
+  const roleSamples=roleHist?.n||0;
+  const needRatio=mancanti/Math.max(1,slotRuolo);
+  const affordability=limite(maxBid/base,0,1.35);
+  const valueRatio=Number(p.val)>0&&base>0?limite(Number(p.val)/base,0.65,1.45):1;
+  const aggression=limite(0.82+(prof.aggress/100)*0.30,0.82,1.12);
+  const history=limite(roleRatio,0.78,1.30);
+  const budgetPressure=limite(0.92+((r.crediti/budgetTot)-0.50)*0.18,0.84,1.08);
+  const phase=faseGlobaleAsta();
+  const phaseBoost=phase===ruolo?1.12:1;
+  const quality=limite(0.55*valueRatio+0.45*limite(Number(p.ptot||0)/300,0.35,1.25),0.45,1.25);
+  const needBoost=1+0.16*needRatio;
+  const raw=base*aggression*history*budgetPressure*phaseBoost*needBoost;
+  const predicted=Math.max(1,Math.min(maxBid,Number(p.max)||raw,Math.round(raw)));
+  const interest=limite(
+    100*(0.32*needRatio+0.22*limite(affordability/1.15,0,1)+0.16*limite((quality-0.55)/0.70,0,1)+0.14*limite((history-0.78)/0.52,0,1)+0.10*(roleSamples>=3?1:roleSamples/3)+0.06*(phase===ruolo?1:0)),
+    5,98
+  );
+  const confidence=limite(Math.round(18+prof.conf*0.65+roleSamples*6),18,92);
+  return {team,r,prof,mancanti,maxBid,base,predicted,interest,confidence,roleRatio,roleSamples,phase,needRatio};
+}
+function interessiPerGiocatore(p){
+  const out=[];
+  for(let team=1;team<Number(LG.squadre||8);team++){
+    const x=profiloInteresseRivale(team,p);
+    if(x) out.push(x);
+  }
+  return out.sort((a,b)=>b.interest-a.interest || b.predicted-a.predicted);
+}
+function bloccoRivaliGiocatore(p){
+  const arr=interessiPerGiocatore(p).slice(0,4);
+  if(!arr.length) return `<div class="playerRivals"><div class="playerRivalsHead"><b>Rivali su questo giocatore</b></div><div class="playerRivalsEmpty">Nessun avversario ha al momento una combinazione credibile di slot e budget per questo ruolo.</div></div>`;
+  const rows=arr.map(x=>{
+    const need=x.mancanti===1?'1 slot':`${x.mancanti} slot`;
+    const hist=x.roleSamples?`${x.roleRatio>=1?'+':''}${Math.round((x.roleRatio-1)*100)}% sul ruolo`:'profilo ancora iniziale';
+    return `<div class="playerRivalRow"><div class="playerRivalWho"><b>${escHtml(nomeSquadra(x.team))}</b><span>${x.r.crediti} cr · ${need}</span></div><div class="playerRivalBid"><strong>~${x.predicted} cr</strong><span>${Math.round(x.interest)}% interesse</span></div><div class="playerRivalWhy">${escHtml(hist)} · max sostenibile ${x.maxBid} · confidenza ${x.confidence}%</div></div>`;
+  }).join('');
+  return `<div class="playerRivals"><div class="playerRivalsHead"><b>Rivali su questo giocatore</b><span>stima dinamica</span></div>${rows}<div class="playerRivalsNote">La stima combina necessità del ruolo, budget/slot residui, comportamento storico e prezzo di mercato. Non significa che il rivale lo comprerà: indica chi ha oggi i presupposti per essere competitivo e quanto potrebbe arrivare a offrire.</div></div>`;
+}
+
+function previsioniRivaliDistinte(){
+  const teams=[];
+  for(let team=1;team<Number(LG.squadre||8);team++){
+    const r=riepilogoSquadra(team);
+    const needs=ORD.reduce((sum,role)=>sum+Math.max(0,(Number(LG.slot[role])||0)-(r.perRuolo[role]||0)),0);
+    teams.push({team,needs,r});
+  }
+  teams.sort((a,b)=>b.needs-a.needs || b.r.crediti-a.r.crediti);
+  const used=new Set(), out={};
+  for(const t of teams){
+    const candidates=[];
+    for(const p of P){
+      if(S.mie[p.id]!==undefined||S.altrui[p.id]!==undefined||p.mkt<=1) continue;
+      const x=profiloInteresseRivale(t.team,p); if(!x) continue;
+      const duplicate=used.has(p.id)?0.22:0;
+      const score=(x.interest/100)*0.82 + Math.min(1,x.predicted/Math.max(1,t.r.crediti))*0.05 + x.needRatio*0.13 - duplicate;
+      candidates.push({x,score});
+    }
+    candidates.sort((a,b)=>b.score-a.score || b.x.interest-a.x.interest);
+    const best=candidates[0]?.x||null;
+    if(best){used.add(best.p.id);out[t.team]=best;}
+  }
+  return out;
+}
+
+function drawRivaliV65(){
+  initRivaliV65();
+  const names=S.squadraNomi.slice(1,Math.max(1,Number(LG.squadre)||8));
+  const distinct=previsioniRivaliDistinte();
+  $('#rivaliBadge').textContent=names.length;
+  $('#rivaliList').innerHTML=names.map((name,i)=>{
+    const team=i+1,r=riepilogoSquadra(team),budget=Number(LG.budget)||1000;
+    const spent=Math.max(0,budget-r.crediti),pct=Math.min(100,spent/budget*100),p=r.perRuolo;
+    const players=Object.keys(S.altrui).filter(id=>Number(S.altruiTeam?.[id])===team&&byId[id]).map(id=>`${escHtml(byId[id].n)} (${prezzoAltrui(id)})`).join(' · ');
+    const pred=distinct[team]||null;
+    const prediction=pred?`<div class="rivalprediction"><strong>🎯 Probabile prossimo obiettivo: ${escHtml(pred.best.p.n)} <span class="rprice">· ${pred.best.predicted} cr</span></strong><div class="rpmeta"><span>${RN[pred.ruolo]}</span><span>Confidenza ${pred.confidence}%</span><span>budget disponibile ${r.crediti}</span></div><div class="rwhy">${escHtml(pred.storico)}</div>${pred.alternatives.length?`<div class="rwhy">Alternative: ${pred.alternatives.map(x=>`${escHtml(x.p.n)} ~${x.predicted} cr`).join(' · ')}</div>`:''}</div>`:'<div class="rivalprediction"><strong>Nessun obiettivo stimabile</strong><div class="rwhy">Budget o slot insufficienti per formulare una previsione.</div></div>';
+    return `<div class="rivalcard"><div class="rivalhead"><b>${escHtml(name)}</b><strong>${r.crediti} cr</strong></div><div class="rivalmeta"><span>${r.slot} slot liberi</span><span>P ${p.P}/${LG.slot.P}</span><span>D ${p.D}/${LG.slot.D}</span><span>C ${p.C}/${LG.slot.C}</span><span>A ${p.A}/${LG.slot.A}</span></div><div class="rivalmeter"><i style="width:${pct}%"></i></div><div class="rivalplayers">${players||'Nessun acquisto registrato'}</div>${prediction}</div>`;
+  }).join('');
+}
+function apriRivaliV65(){drawRivaliV65();$('#rivaliSheet').classList.add('on');}
+$('#rivaliBtn').addEventListener('click',apriRivaliV65);
+$('#topSimBtn').addEventListener('click',()=>$('#auctionSimSheet').classList.add('on'));
+initRivaliV65();
+drawRivaliV65();
+</script>
 </body>
 </html>
