@@ -35,7 +35,7 @@
   .mobileMenu{width:100%;box-sizing:border-box;}
 }
 </style>
-</head>
+<style id="v70-2-concentration"></style></head>
 <body>
 <div class="testa" id="testa">
 <div class="top" id="top">
@@ -493,6 +493,26 @@ $('#impSheet').addEventListener('click', e=>{
 });
 /* ---------- caricamento rosa giocatori ---------- */
 
+const ROSA_DATASET_KEY = 'asta2026_dataset_giocatori';
+function salvaDatasetPersistente(){
+  try { localStorage.setItem(ROSA_DATASET_KEY, JSON.stringify(P)); } catch(_) {}
+}
+function ripristinaDatasetPersistito(){
+  try {
+    const raw=localStorage.getItem(ROSA_DATASET_KEY);
+    if(!raw) return false;
+    const arr=JSON.parse(raw);
+    if(!Array.isArray(arr) || arr.length<20) return false;
+    P.length=0; arr.forEach(x=>P.push(x));
+    Object.keys(byId).forEach(k=>delete byId[k]);
+    P.forEach(x=>byId[x.id]=x);
+    ricostruisciIndiceRicerca();
+    calcolaPrezzi(false,true);
+    popolaDatalist();
+    return true;
+  } catch(_) { return false; }
+}
+
 function aggiornaDatasetGiocatori(nuovi){
   if(!Array.isArray(nuovi) || nuovi.length < 20){
     throw new Error('Il file deve contenere almeno 20 giocatori.');
@@ -610,6 +630,7 @@ function aggiornaDatasetGiocatori(nuovi){
   // Ricalcola prezzi e costo atteso
   calcolaPrezzi(false, true);
   popolaDatalist();
+  salvaDatasetPersistente();
   redraw();
 
   return validi.length;
@@ -814,6 +835,8 @@ $('#rosaReset').addEventListener('click', ()=>{
   DATA.players.forEach(p=>P.push(Object.assign({},p)));
   Object.keys(byId).forEach(k=>delete byId[k]);
   P.forEach(p=>byId[p.id]=p);
+  try { localStorage.removeItem(ROSA_DATASET_KEY); } catch(_) {}
+  ricostruisciIndiceRicerca();
   calcolaPrezzi(false, true); popolaDatalist(); redraw();
   $('#rosaFonte').textContent='Usati i dati predefiniti incorporati nell’app.';
 });
@@ -1081,6 +1104,31 @@ function faseGlobaleAsta(){
   if(!tuttiHanno('A')) return 'A';
   return null;
 }
+function applicaFiltroRepartoAutomatico(fase){
+  // Unica sorgente per il cambio automatico del reparto: aggiorna sia il
+  // componente P/D/C/A sia lo stato effettivo del filtro della lista.
+  if(!fase) return null;
+  S.ruolo=fase;
+  const seg=document.getElementById('seg');
+  if(seg){
+    [...seg.children].forEach(x=>{
+      const active = x.dataset.r===fase;
+      x.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+  // Ridisegno subito la lista: non aspettiamo un successivo redraw per
+  // evitare che il filtro precedente rimanga visibile dopo P→D, D→C o C→A.
+  if(typeof drawList==='function') drawList();
+  return fase;
+}
+function aggiornaRepartoAutomatico(){
+  // Regola unica per asta reale e simulazione: il reparto selezionato segue
+  // il primo reparto che non è ancora completato da TUTTE le squadre.
+  const fase=faseGlobaleAsta();
+  if(!fase) return null;
+  return applicaFiltroRepartoAutomatico(fase);
+}
+
 function costruisciPianoStrategico(){
   const c=conti();
   const fase=faseGlobaleAsta();
@@ -2244,7 +2292,7 @@ $('#teamsNsq').addEventListener('change', e=>{
   LG.squadre=+e.target.value;
   S.squadraNomi=normalizzaNomiSquadre(S.squadraNomi,LG.squadre);
   Object.keys(S.altruiTeam).forEach(id=>{ const t=Number(S.altruiTeam[id]); if(!(t>0&&t<LG.squadre)) delete S.altruiTeam[id]; });
-  salvaNomiSquadre(); calcolaPrezzi(false, true); redraw(); aggiornaTeamsControls(); drawTeams();
+  salvaNomiSquadre(); calcolaPrezzi(false, true); aggiornaRepartoAutomatico(); redraw(); aggiornaTeamsControls(); drawTeams();
 });
 $('#teamsNameSel').addEventListener('change', e=>{ const i=+e.target.value; $('#teamsNameInput').value=S.squadraNomi[i]||''; });
 $('#teamsNameSave').addEventListener('click', ()=>{ const i=+$('#teamsNameSel').value; const v=$('#teamsNameInput').value.trim(); if(!v) return; S.squadraNomi[i]=v; salvaNomiSquadre(); drawTeams(); $('#teamsNameSel').options[i].text=v; });
@@ -2273,7 +2321,9 @@ $('#assignSheet').addEventListener('click', e=>{
   registraAcquisto(byId[id], v, team);
   S.open=null;
   chiudiAssegnazione();
-  calcolaPrezzi(true); redraw();
+  calcolaPrezzi(true);
+  aggiornaRepartoAutomatico();
+  redraw();
 });
 
 /* ---------- simulazione asta V64 ---------- */
@@ -2331,10 +2381,17 @@ function simulaScenario(){
   }
   S.auctionHistory=events.slice(-500);
   calcolaPrezzi(true); redraw();
-  const currentPhase=faseGlobaleAsta();
+  const currentPhase=aggiornaRepartoAutomatico();
+  // La stessa regola dell'asta reale vale nella simulazione: reparto,
+  // componente e filtro lista devono sempre puntare allo stesso ruolo.
+  const nextCheckpoint={P4:'D1',D4:'C1',C4:'A1'}[key];
+  const simCheckpointEl=$('#simCheckpoint');
   const roleSummary=ORD.map(r=>`<div><b>${RN[r]}</b><span>${counts[r]||0}/${LG.slot[r]} per squadra</span></div>`).join('');
   const next=P.find(p=>p.r===currentPhase&&S.mie[p.id]===undefined&&S.altrui[p.id]===undefined&&p.mkt>1);
   $('#auctionSimResult').innerHTML=`<div class="simulationSummary"><b>${escHtml(scenarioLabel(key))}</b><span>Seed ${escHtml($('#simSeed')?.value||'64001')} · ${events.length} acquisti</span><strong>Fase attuale: ${currentPhase?RN[currentPhase]:'completata'}</strong></div><div class="scenarioRoles">${roleSummary}</div>${next?`<div class="sub" style="margin-top:10px">Prossimo test: <b>${escHtml(next.n)}</b> · ${RN[next.r]}</div>`:''}<div class="sub" style="margin-top:10px">Nessuna squadra può superare ${budget} crediti: ogni acquisto è validato anche rispetto agli slot ancora da riempire.</div>`;
+  // Dopo P4/D4/C4 il prossimo reparto diventa il default della simulazione.
+  // Se il reparto finale A4 è stato selezionato, non esiste un reparto successivo.
+  if(nextCheckpoint && simCheckpointEl){ simCheckpointEl.value=nextCheckpoint; }
   drawTeams(); drawAnalysis();
 }
 
@@ -2352,6 +2409,7 @@ list.addEventListener('click', e=>{
       registraAcquisto(byId[b.dataset.buy], v, 0);
       S.open=null;
       calcolaPrezzi(true);
+      aggiornaRepartoAutomatico();
       redraw();
       return;
     }
@@ -2409,7 +2467,11 @@ $('#list').addEventListener('click', e=>{
 }, true);
 function azzeraTutto(){
   if(confirm('Azzerare rosa e assegnazioni?')){
-    S.mie={}; S.altrui={}; S.altruiTeam={}; S.veri={}; S.auctionHistory=[]; S.open=null; calcolaPrezzi(); redraw();
+    S.mie={}; S.altrui={}; S.altruiTeam={}; S.veri={}; S.auctionHistory=[]; S.open=null;
+    try { localStorage.removeItem(ROSA_DATASET_KEY); } catch(_) {}
+    P.length=0; DATA.players.forEach(p=>P.push(Object.assign({},p)));
+    Object.keys(byId).forEach(k=>delete byId[k]); P.forEach(p=>byId[p.id]=p);
+    ricostruisciIndiceRicerca(); calcolaPrezzi(false,true); redraw();
   }
 }
 $('#reset').addEventListener('click', azzeraTutto);
@@ -2677,7 +2739,7 @@ document.addEventListener('change', e=>{
     salvaNomiSquadre();
     if(o.p1000){ P.forEach(x=>x.p1000=null);
       o.p1000.forEach(([k,v])=>{ if(byId[k]) byId[k].p1000=v; }); }
-    calcolaPrezzi(); redraw();
+    calcolaPrezzi(); aggiornaRepartoAutomatico(); redraw();
   }catch(_){ alert('File non leggibile.'); } };
   fr.readAsText(e.target.files[0]);
 });
@@ -2690,6 +2752,7 @@ function redraw(){
   if($('#analysisSheet')?.classList.contains('on')) drawAnalysis();
 }
 
+ripristinaDatasetPersistito();
 calcolaPrezzi(false, true); redraw();
 </script>
 
@@ -2706,6 +2769,9 @@ calcolaPrezzi(false, true); redraw();
 <section id="btDemo" aria-label="Demo backtesting e profilazione"><h3>🧪 Demo Backtesting & Profilazione</h3><div class="bt-sub">Demo isolata: non modifica l'asta reale. Aggiungi progressivamente 5 acquisti simulati.</div><div class="bt-grid"><div class="bt-card"><div class="bt-sub">Acquisti</div><div class="bt-big" id="btN">0</div></div><div class="bt-card"><div class="bt-sub">Errore medio</div><div class="bt-big" id="btErr">—</div></div><div class="bt-card"><div class="bt-sub">Profilo</div><div class="bt-big" id="btProfile">Nessuno</div></div><div class="bt-card"><div class="bt-sub">Confidenza</div><div class="bt-big" id="btConf">0%</div><div class="bt-bar"><div class="bt-fill" id="btFill"></div></div></div></div><div class="bt-status" id="btStatus">Nessun profilo: servono almeno 4 acquisti.</div><div class="bt-list" id="btRows"></div><button class="bt-btn" id="btRun">▶ Avvia demo</button></section>
 <script>
 (function(){const s=[["Lautaro",62,71,"A"],["Vlahovic",55,63,"A"],["Barella",39,34,"C"],["Theo",47,52,"D"],["Calhanoglu",42,48,"C"]];let n=0;function r(){const a=s.slice(0,n),e=a.length?a.reduce((z,x)=>z+Math.abs(x[2]-x[1])/x[1],0)/a.length:0,c=n<3?0:n===3?35:n===4?65:82;let p="Nessuno",t="Nessun profilo: servono almeno 4 acquisti.";if(n===3){p="Preliminare";t="Profilo iniziale disponibile (confidenza bassa)."}if(n===4){p="In formazione";t="Profilo attivo: i dati iniziano a influenzare la previsione."}if(n===5){p="Affidabile";t="Profilo affidabile: aggressività e deviazione dal mercato misurabili."}btN.textContent=n;btErr.textContent=n?(e*100).toFixed(1)+"%":"—";btProfile.textContent=p;btConf.textContent=c+"%";btFill.style.width=c+"%";btStatus.textContent=t;btRows.innerHTML=a.map(x=>{let d=(x[2]-x[1])/x[1]*100;return `<div class="bt-row"><span><b>${x[0]}</b> · ${x[3]} · stima ${x[1]}</span><span>reale ${x[2]} · ${d>=0?"+":""}${d.toFixed(1)}%</span></div>`}).join("")}btRun.addEventListener("click",()=>{n=(n+1)%6;btRun.textContent=n===0?"▶ Avvia demo":n<5?"＋ Aggiungi acquisto":"↻ Ricomincia";r()});r()})();</script>
+<style id="v70-auction-intelligence">
+.rivalThreat{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 10px;padding:9px 11px;border:1px solid #e6e9ee;border-radius:10px;background:#fafbfc;font-size:11px}.rivalThreat b{font-size:12px}.rivalThreat span{color:#667085}.threatHigh{border-color:#e7caca}.threatMed{border-color:#eadfbd}.threatLow{border-color:#d7e5da}
+</style>
 <script>
 /* V67: Rivali 2.0. Base grafica V66 invariata; motore predittivo migliorato. */
 function initRivaliV65(){
@@ -2839,14 +2905,46 @@ function interessiPerGiocatore(p){
 function bloccoRivaliGiocatore(p){
   const arr=interessiPerGiocatore(p);
   if(!arr.length) return `<div class="playerRivals"><div class="playerRivalsHead"><b>Rivali su questo giocatore</b></div><div class="playerRivalsEmpty">Nessun avversario ha al momento una combinazione credibile di slot e budget per questo ruolo.</div></div>`;
+  const active=arr.filter(x=>x.interest>0 && x.predicted>0);
+  const myMax=Number(p.myMax||0);
+  // La minaccia deve essere specifica per questo giocatore: usiamo una
+  // combinazione di capacità di spesa, interesse e confidenza, evitando che
+  // un singolo rivale risulti sempre primo solo perché ha più budget.
+  // V70.2: la minaccia deve essere dinamica anche rispetto agli acquisti appena fatti.
+  // Un rivale che ha appena comprato uno o più giocatori resta competitivo, ma la sua
+  // probabilità di essere nuovamente la minaccia principale diminuisce temporaneamente.
+  // Non ruotiamo artificialmente i rivali: la penalità è proporzionale a recenza e streak.
+  function fattoreConcentrazione(team){
+    const ev=Array.isArray(S.auctionHistory)?S.auctionHistory.filter(e=>Number(e.team)===Number(team)&&Number(e.team)>0):[];
+    const recent=ev.slice(-4);
+    const recentCount=recent.length;
+    let streak=0;
+    for(let i=S.auctionHistory.length-1;i>=0;i--){
+      const e=S.auctionHistory[i];
+      if(Number(e.team)<=0) continue;
+      if(Number(e.team)===Number(team)) streak++;
+      else break;
+    }
+    // Penalità contenuta: non impedisce a un rivale realmente forte di restare minaccia.
+    const penalty=0.12*Math.min(3,recentCount)+0.10*Math.min(2,Math.max(0,streak-1));
+    return Math.max(0.52,1-penalty);
+  }
+  const threatScore=x => (Number(x.predicted)||0) * (0.55 + (Number(x.interest)||0)/200) * (0.80 + (Number(x.confidence)||0)/500) * fattoreConcentrazione(x.team);
+  const threats=active.filter(x=>(Number(x.bidHigh)||Number(x.predicted)||0)>=myMax && myMax>0).sort((a,b)=>threatScore(b)-threatScore(a));
+  const threatLevel=threats.length>=2?'ALTA':threats.length===1?'MEDIA':'BASSA';
+  const threatClass=threats.length>=2?'threatHigh':threats.length===1?'threatMed':'threatLow';
+  const topThreat=active.slice().sort((a,b)=>threatScore(b)-threatScore(a) || (b.interest-a.interest) || (b.predicted-a.predicted))[0];
+  const summary=`<div class="rivalThreat ${threatClass}"><b>Minaccia asta: ${threatLevel}</b><span>${topThreat?`Rivale più pericoloso: ${escHtml(nomeSquadra(topThreat.team))} · max ${topThreat.maxBid} cr`: 'Nessun rivale competitivo'}</span>${myMax?`<span>Il tuo Max: ${myMax} cr${threats.length?` · ${threats.length} rivale/i possono arrivarci`: ' · nessun rivale stimato sopra il tuo limite'}</span>`:''}</div>`;
   const rows=arr.map(x=>{
     const need=x.mancanti===1?'1 slot':`${x.mancanti} slot`;
     const roleData=x.prof?.byRole?.[p.r]; const hist=x.roleSamples?`${x.roleRatio>=1?'+':''}${Math.round((x.roleRatio-1)*100)}% sul ruolo${roleData?.avgPrice?` · media ${Math.round(roleData.avgPrice)} cr`:''}`:'profilo ancora iniziale';
     const inactive=x.noSlot||x.noBudget||x.interest===0;
+    const recentTeamBuys=Array.isArray(S.auctionHistory)?S.auctionHistory.filter(e=>Number(e.team)===Number(x.team)&&Number(e.team)>0).slice(-4).length:0;
     const reason=x.keeperPair?x.keeperReason:(x.noSlot?'ruolo completo':x.noBudget?'budget insufficiente':hist);
-    return `<div class="playerRivalRow ${inactive?'isInactive':''}"><div class="playerRivalWho"><b>${escHtml(nomeSquadra(x.team))}</b><span>${x.r.crediti} cr · ${x.noSlot?'nessuno slot':need}</span></div><div class="playerRivalBid"><strong>${x.predicted?`~${x.predicted} cr`:'—'}</strong><span>${x.interest?`${Math.round(x.interest)}% interesse`:'non competitivo'}</span></div><div class="playerRivalWhy">${escHtml(reason)} · max sostenibile ${x.maxBid} · confidenza ${x.confidence}%</div></div>`;
+    const recentNote=recentTeamBuys?` · ${recentTeamBuys} acquisti recenti`:'';
+    return `<div class="playerRivalRow ${inactive?'isInactive':''}"><div class="playerRivalWho"><b>${escHtml(nomeSquadra(x.team))}</b><span>${x.r.crediti} cr · ${x.noSlot?'nessuno slot':need}</span></div><div class="playerRivalBid"><strong>${x.predicted?`~${x.predicted} cr`:'—'}</strong><span>${x.interest?`${Math.round(x.interest)}% interesse`:'non competitivo'}</span></div><div class="playerRivalWhy">${escHtml(reason)}${escHtml(recentNote)} · max sostenibile ${x.maxBid} · confidenza ${x.confidence}%</div></div>`;
   }).join('');
-  return `<div class="playerRivals"><div class="playerRivalsHead"><b>Rivali su questo giocatore</b><span>stima dinamica · ${arr.length}/7</span></div><div class="playerRivalsScroll">${rows}</div><div class="playerRivalsNote">La stima combina necessità del ruolo, budget/slot residui, comportamento storico e prezzo di mercato. Non significa che il rivale lo comprerà: indica chi ha oggi i presupposti per essere competitivo e quanto potrebbe arrivare a offrire.</div></div>`;
+  return `<div class="playerRivals"><div class="playerRivalsHead"><b>Rivali su questo giocatore</b><span>stima dinamica · ${arr.length}/7</span></div>${summary}<div class="playerRivalsScroll">${rows}</div><div class="playerRivalsNote">La stima combina necessità del ruolo, budget/slot residui, comportamento storico e prezzo di mercato. Il prossimo obiettivo dei rivali è vincolato al reparto attualmente in asta. Non significa che il rivale lo comprerà: indica chi ha oggi i presupposti per essere competitivo e quanto potrebbe arrivare a offrire.</div></div>`;
 }
 
 function previsioniRivaliDistinte(){

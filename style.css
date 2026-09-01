@@ -1356,3 +1356,18 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .playerRivalsNote,.playerRivalsEmpty{font-size:9.5px;color:var(--mut2);line-height:1.4;margin-top:6px}
 @media(max-width:599px){.playerRivals{padding:9px 10px}.playerRivalsScroll{height:170px;max-height:170px}.playerRivalRow{grid-template-columns:minmax(0,1fr) auto}}
 @media(min-width:1560px){.utilitybar{max-width:1500px;width:100%;box-sizing:border-box;margin-left:auto;margin-right:auto;padding-left:16px;padding-right:0}}
+
+
+/* V71 - controlli asta: stile esplicito e coerente per azioni e dropdown */
+.analysisActions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;align-items:stretch}
+.analysisActions button{appearance:none;border:1px solid var(--line);border-radius:10px;min-height:42px;padding:9px 12px;background:var(--surf);color:var(--txt);font-weight:800;box-shadow:var(--ombra);transition:background .12s,border-color .12s,transform .12s}
+.analysisActions button:hover{background:var(--surf2);border-color:var(--g5);transform:translateY(-1px)}
+.analysisActions button:active{transform:translateY(0)}
+.analysisActions #simulateTeam{background:var(--gold);border-color:var(--gold);color:#fff}
+.analysisActions #openAuctionSim{background:var(--surf);border-color:var(--gold);color:var(--gold)}
+.analysisActions #refreshAnalysis{background:var(--surf2)}
+#opz .fld select,.simControls select,.teamsToolbar select{appearance:auto;width:100%;min-height:44px;padding:9px 34px 9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surf);color:var(--txt);font-weight:650;box-shadow:inset 0 1px 2px rgba(27,27,25,.035)}
+#opz .fld select:hover,.simControls select:hover,.teamsToolbar select:hover{border-color:var(--g5);background:#fff}
+#opz .fld select:focus-visible,.simControls select:focus-visible,.teamsToolbar select:focus-visible{outline:2px solid rgba(47,74,92,.24);outline-offset:2px;border-color:var(--gold)}
+#opz .fld select.on{border-color:var(--gold);color:var(--gold);font-weight:800}
+@media(max-width:700px){.analysisActions{grid-template-columns:1fr}.analysisActions button{width:100%;min-height:46px}}
