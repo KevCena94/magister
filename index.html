@@ -59,7 +59,7 @@
 <div class="testa" id="testa">
 <div class="top" id="top">
   <div class="tline">
-    <span class="brand">Asta <em>2026-27</em></span>
+    <span class="brand">Asta <em>2026-27</em></span><button class="aboutBtn" id="aboutBtn" aria-label="Come funziona Asta Live" title="Come funziona Asta Live">ⓘ</button>
     <span class="big"><small><i class="lg">Crediti</i><i class="sm">Cr</i></small><span id="cred">1000</span><em id="credtot"></em></span>
     <span class="big"><small><i class="lg">Slot liberi</i><i class="sm">Slot</i></small><span id="slots">25</span></span>
     <span class="big solomax"><small><i class="lg">Max su un giocatore</i><i class="sm">Max</i></small><span id="capmax">–</span></span>
@@ -171,6 +171,21 @@
   <div class="sub" id="spSub"></div>
   <div id="spTxt"></div>
   <button class="close" data-chiudi="spiegaSheet">Ho capito</button>
+</div></div>
+
+<div class="sheet" id="aboutSheet"><div class="card sm aboutCard">
+  <h3>⚽ Asta Live — Come funziona</h3>
+  <div class="sub">Il tuo assistente durante l’asta: aggiorna automaticamente la situazione e analizza te e i tuoi rivali in tempo reale.</div>
+  <div class="aboutGrid">
+    <p><b>📊 Controlla</b><br>Budget, crediti residui, slot, reparti, rose, acquisti e andamento della spesa.</p>
+    <p><b>🎯 Analizza i rivali</b><br>Individua necessità, budget, probabili prossimi obiettivi e rivali più pericolosi.</p>
+    <p><b>🔮 Simula</b><br>Valuta come potrebbe evolvere l’asta e come cambiano budget, slot e competitività.</p>
+    <p><b>🧠 Supporta le decisioni</b><br>Ti aiuta a capire quanto puoi spendere senza compromettere i prossimi acquisti.</p>
+    <p><b>🔄 Si aggiorna da solo</b><br>Dopo ogni acquisto aggiorna automaticamente rose, budget, slot e analisi.</p>
+    <p><b>💾 Ti protegge</b><br>Salva automaticamente lo stato e permette di creare e ripristinare un backup manuale.</p>
+  </div>
+  <div class="aboutNote">Tu gestisci l’asta. <b>Asta Live ti aiuta a leggere ciò che sta succedendo.</b></div>
+  <button class="close" id="closeAbout">Ho capito</button>
 </div></div>
 
 <div class="sheet" id="impSheet"><div class="card">
@@ -3062,6 +3077,10 @@ function drawRivaliV65(){
     return `<div class="rivalcard"><div class="rivalhead"><b>${escHtml(name)}</b><strong>${r.crediti} cr</strong></div><div class="rivalmeta"><span>${r.slot} slot liberi</span><span>P ${p.P}/${LG.slot.P}</span><span>D ${p.D}/${LG.slot.D}</span><span>C ${p.C}/${LG.slot.C}</span><span>A ${p.A}/${LG.slot.A}</span></div><div class="rivalmeter"><i style="width:${pct}%"></i></div><div class="rivalplayers">${players||'Nessun acquisto registrato'}</div>${prediction}</div>`;
   }).join('');
 }
+function apriAbout(){ $('#aboutSheet').classList.add('on'); }
+$('#aboutBtn').addEventListener('click', apriAbout);
+$('#closeAbout').addEventListener('click', ()=>$('#aboutSheet').classList.remove('on'));
+$('#aboutSheet').addEventListener('click', e=>{ if(e.target.id==='aboutSheet') $('#aboutSheet').classList.remove('on'); });
 function apriRivaliV65(){drawRivaliV65();$('#rivaliSheet').classList.add('on');}
 $('#rivaliBtn').addEventListener('click',apriRivaliV65);
 $('#topSimBtn').addEventListener('click',()=>$('#auctionSimSheet').classList.add('on'));

@@ -1371,3 +1371,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 #opz .fld select:focus-visible,.simControls select:focus-visible,.teamsToolbar select:focus-visible{outline:2px solid rgba(47,74,92,.24);outline-offset:2px;border-color:var(--gold)}
 #opz .fld select.on{border-color:var(--gold);color:var(--gold);font-weight:800}
 @media(max-width:700px){.analysisActions{grid-template-columns:1fr}.analysisActions button{width:100%;min-height:46px}}
+
+/* V72.4: compact in-app guide */
+.aboutBtn{margin-left:6px;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:50%;background:var(--surf);color:var(--txt);font-size:17px;font-weight:700;cursor:pointer;vertical-align:middle;}
+.aboutBtn:hover{filter:brightness(.97);}
+.aboutCard{max-width:620px;}
+.aboutGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0;}
+.aboutGrid p{margin:0;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surf);line-height:1.4;font-size:13px;}
+.aboutNote{margin:8px 0 14px;padding:11px 12px;border-radius:10px;background:var(--bg,#f3f3f1);line-height:1.45;font-size:13px;text-align:center;}
+@media(max-width:599px){
+  .aboutBtn{width:30px;height:30px;font-size:16px;margin-left:4px;}
+  .aboutGrid{grid-template-columns:1fr;gap:7px;}
+  .aboutGrid p{font-size:12.5px;padding:9px 10px;}
+}
