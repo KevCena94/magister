@@ -1211,7 +1211,7 @@ body{background:var(--ink);}
 
 /* Filtri */
 #opz{border-bottom:1px solid var(--line);background:var(--surf2)}
-.fld.flags{background:var(--surf);border:1px solid var(--line);border-radius:11px}
+.fld,.flags{background:var(--surf);border:1px solid var(--line);border-radius:11px}
 
 /* Chips più discrete */
 .chips{min-height:0}

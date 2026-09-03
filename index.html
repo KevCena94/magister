@@ -378,6 +378,132 @@ function chiave(nome){
     .toLowerCase().replace(/['`]/g,'').replace(/[.\-]/g,' ')
     .replace(/\s+/g,' ').trim();
 }
+/* ---------- storico rose 2025-26 ----------
+   Il file Excel viene incluso nella distribuzione e letto automaticamente
+   all'avvio. I dati storici NON vengono trattati come acquisti dell'asta
+   corrente: servono solo a migliorare il profilo predittivo dei rivali. */
+S.storicoRivali = {loaded:false, source:null, teams:{}, events:[]};
+S.storicoPrezzi = {}; // prezzo effettivo storico per singolo giocatore
+S.prezziAsta2026 = {}; // prezzi realmente pagati nell'asta precedente, senza formazioni
+
+function normalizzaStoricoNome(nome){
+  return chiave(String(nome||'').replace(/\*/g,'').trim());
+}
+function importaStoricoRivaliWorkbook(wb){
+  const teams={}; const events=[];
+  (wb.SheetNames||[]).forEach(sheetName=>{
+    const ws=wb.Sheets[sheetName];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
+    if(!rows.length) return;
+    const header=rows[0]||[], teamRow=rows[1]||[];
+    for(let c=0;c<header.length;c+=2){
+      const manager=header[c]!=null?String(header[c]).trim():'';
+      const teamName=teamRow[c]!=null?String(teamRow[c]).trim():'';
+      if(!teamName) continue;
+      const key=normalizzaStoricoNome(teamName);
+      if(!teams[key]) teams[key]={name:teamName,manager,events:[],sheets:[]};
+      if(manager && !teams[key].manager) teams[key].manager=manager;
+      if(!teams[key].sheets.includes(sheetName)) teams[key].sheets.push(sheetName);
+      for(let r=2;r<rows.length;r++){
+        const player=rows[r]?.[c];
+        const price=rows[r]?.[c+1];
+        if(player==null || String(player).trim()==='') continue;
+        const n=Number(price);
+        if(!Number.isFinite(n) || n<=0) continue;
+        const ev={teamName,manager,sheet:sheetName,player:String(player).replace(/\*/g,'').trim(),price:n};
+        teams[key].events.push(ev); events.push(ev);
+      }
+    }
+  });
+  S.storicoRivali={loaded:true,source:'C&F Rose 2025-26.xlsx',teams,events};
+
+  // Il workbook contiene le rose di più momenti della stagione. Lo stesso
+  // giocatore può quindi comparire più volte nella stessa squadra: per stimare
+  // il prezzo effettivamente pagato lo contiamo una sola volta per squadra.
+  const unique = new Map();
+  for(const e of events){
+    const k=normalizzaStoricoNome(e.teamName)+'|'+normalizzaStoricoNome(e.player);
+    if(!unique.has(k)) unique.set(k,e);
+  }
+  const byPlayer={};
+  for(const e of unique.values()){
+    const k=normalizzaStoricoNome(e.player);
+    if(!byPlayer[k]) byPlayer[k]=[];
+    byPlayer[k].push(Number(e.price));
+  }
+  const median=arr=>{
+    const a=arr.filter(Number.isFinite).sort((x,y)=>x-y); if(!a.length) return 0;
+    const m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2;
+  };
+  S.storicoPrezzi={};
+  for(const [k,prices] of Object.entries(byPlayer)){
+    S.storicoPrezzi[k]={price:median(prices),n:prices.length,min:Math.min(...prices),max:Math.max(...prices)};
+  }
+  return S.storicoRivali;
+}
+async function caricaStoricoRivaliExcel(){
+  try{
+    const res=await fetch('data/rose_storiche_2025_26.xlsx',{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const buf=await res.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    importaStoricoRivaliWorkbook(wb);
+    console.info('[Asta Live] Storico rivali 2025-26 caricato:',S.storicoRivali.events.length,'acquisti');
+  }catch(err){
+    S.storicoRivali={loaded:false,source:null,teams:{},events:[]};
+    S.storicoPrezzi={};
+    console.warn('[Asta Live] Storico Excel non disponibile:',err?.message||err);
+  }
+  return S.storicoRivali;
+}
+async function caricaPrezziAsta2026(){
+  try{
+    const res=await fetch('data/prezzi_asta_2026_27.json',{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json();
+    S.prezziAsta2026=(data && typeof data==='object')?data:{};
+    console.info('[Asta Live] Prezzi asta 2026-27 caricati:',Object.keys(S.prezziAsta2026).length);
+  }catch(err){
+    S.prezziAsta2026={};
+    console.warn('[Asta Live] Prezzi asta 2026-27 non disponibili:',err?.message||err);
+  }
+  return S.prezziAsta2026;
+}
+function prezzoAsta2026(p){
+  const v=Number(S.prezziAsta2026?.[normalizzaStoricoNome(p?.n)]);
+  return Number.isFinite(v) && v>0 ? v : null;
+}
+function storicoTeamPerIndice(idx){
+  const nome=String(S.squadraNomi?.[Number(idx)]||'').trim();
+  const byName=S.storicoRivali?.teams?.[normalizzaStoricoNome(nome)];
+  if(byName) return byName;
+  // Fallback robusto: l'ordine delle colonne del workbook corrisponde agli 8 team della lega.
+  const all=Object.values(S.storicoRivali?.teams||{});
+  return all[Number(idx)-1]||null;
+}
+function storicoProfiloSquadra(idx){
+  const t=storicoTeamPerIndice(idx);
+  if(!t) return {n:0,avgRatio:1,byRole:{},avgPrice:0,matched:0};
+  const byRole={}; let matched=0; const ratios=[];
+  for(const e of t.events){
+    const p=byId[normalizzaStoricoNome(e.player)];
+    const role=p?.r;
+    if(!role) continue;
+    const market=Math.max(1,Number(p.mkt)||Number(p.val)||1);
+    const ratio=Number(e.price)/market;
+    if(!Number.isFinite(ratio)) continue;
+    matched++; ratios.push(ratio);
+    if(!byRole[role]) byRole[role]={n:0,ratioSum:0,priceSum:0};
+    byRole[role].n++; byRole[role].ratioSum+=ratio; byRole[role].priceSum+=Number(e.price);
+  }
+  ORD.forEach(r=>{
+    const x=byRole[r];
+    if(x) byRole[r]={n:x.n,ratio:x.ratioSum/x.n,avgPrice:x.priceSum/x.n};
+    else byRole[r]=null;
+  });
+  return {n:t.events.length,matched,avgRatio:ratios.length?ratios.reduce((a,b)=>a+b,0)/ratios.length:1,byRole,avgPrice:t.events.length?t.events.reduce((a,e)=>a+e.price,0)/t.events.length:0,manager:t.manager,name:t.name,sheets:t.sheets};
+}
+
 function spezza(riga, sep){
   // la colonna RM del listone contiene punti e virgola ("Dd;Ds;E"): senza
   // rispettare le virgolette la riga si spacca e le colonne slittano
@@ -1054,8 +1180,25 @@ function valutaDecisioneAPrezzo(p,c,prezzo){
   const alt=Number(p.myMaxFactors?.alternative ?? 3);
   const need=Number(c?.[p.r]?.liberi||0);
   const qualityScarcity=Number(p.myMaxFactors?.scarsitaQualita||1);
+  const ratio=prezzo/expected;
 
-  if(!cp || need<=0 || prezzo>cp || prezzo>max) return {action:'leave',label:'LASCIA',ratio:prezzo/expected,reason:'tetto'};
+  // V73.1: se esiste un prezzo reale dell'asta precedente, quel dato deve
+  // prevalere nella decisione operativa quando il prezzo corrente è ancora
+  // nettamente sotto l'ancora. Non ha senso dire LASCIA a 60 se il giocatore
+  // è stato pagato 85 e la valutazione attuale è 70-71.
+  const astaPrecedente=Number(p.prezzoAsta2026)||0;
+  const ancoraFavorevole=astaPrecedente>0 && prezzo<=astaPrecedente*0.82;
+  const sottoRangeConsigliato=astaPrecedente>0 && Number(p.min)>0 && prezzo<=Number(p.min);
+
+  if(!cp || need<=0 || prezzo>cp) return {action:'leave',label:'LASCIA',ratio:prezzo/expected,reason:'tetto'};
+
+  // Se il prezzo è sotto il range consigliato ancorato all'asta precedente,
+  // non deve essere trasformato in LASCIA dal massimo strategico.
+  if(sottoRangeConsigliato || ancoraFavorevole){
+    return {action:'take',label:'PRENDI',ratio,reason:sottoRangeConsigliato?'sotto-range-ancora':'sconto-asta-precedente'};
+  }
+
+  if(prezzo>max) return {action:'leave',label:'LASCIA',ratio:prezzo/expected,reason:'tetto'};
 
   // V35: la decisione non guarda più soltanto al confronto prezzo/min/max.
   // Il prezzo viene confrontato con il mercato atteso e con la sostituibilità.
@@ -1065,7 +1208,6 @@ function valutaDecisioneAPrezzo(p,c,prezzo){
   const alternativePremium=alt<=1 ? 0.075 : alt<=2 ? 0.055 : alt<=4 ? 0.025 : 0;
   const needPremium=need>=3 ? 0.025 : need>=2 ? 0.015 : 0;
   const tolerance=0.035+scarcityPremium+alternativePremium+needPremium;
-  const ratio=prezzo/expected;
   const intrinsicRatio=prezzo/intrinsic;
 
   // PRENDI: vero valore sotto mercato. Non richiede che il giocatore sia
@@ -1359,25 +1501,41 @@ function rimuoviUltimoEvento(id){
 function profiloSquadra(idx){
   const ev=S.auctionHistory.filter(e=>Number(e.team)===Number(idx)&&Number(e.price)>0);
   const n=ev.length;
-  // Il profilo usa soprattutto gli acquisti recenti: il comportamento di una
-  // squadra cambia durante l'asta quando il budget e i buchi di rosa cambiano.
+  // Il profilo corrente usa soprattutto gli acquisti recenti.
   const recent=ev.slice(-6);
   const pesi=recent.map((_,i)=>i+1);
   const pesoTot=pesi.reduce((a,b)=>a+b,0)||1;
-  const avg=recent.length?recent.reduce((a,e,i)=>a+Number(e.ratio||1)*pesi[i],0)/pesoTot:1;
-  const byRole={};
+  const currentAvg=recent.length?recent.reduce((a,e,i)=>a+Number(e.ratio||1)*pesi[i],0)/pesoTot:1;
+  const currentByRole={};
   ORD.forEach(r=>{
     const a=recent.filter(e=>e.r===r);
-    if(!a.length){byRole[r]=null;return;}
+    if(!a.length){currentByRole[r]=null;return;}
     const w=a.map((_,i)=>i+1), wt=w.reduce((x,y)=>x+y,0)||1;
     const ratio=a.reduce((z,e,i)=>z+Number(e.ratio||1)*w[i],0)/wt;
     const avgPrice=a.reduce((z,e)=>z+Number(e.price||0),0)/a.length;
-    byRole[r]={n:a.length,ratio,avgPrice,lastPrice:Number(a[a.length-1].price||0)};
+    currentByRole[r]={n:a.length,ratio,avgPrice,lastPrice:Number(a[a.length-1].price||0)};
   });
-  const conf=n<2?0:n===2?22:n===3?38:n===4?58:n===5?72:n<8?84:92;
+
+  // Storico Excel: pesa meno dell'asta corrente, ma fornisce un profilo di base
+  // già dal primo acquisto della stagione.
+  const hist=storicoProfiloSquadra(idx);
+  const histWeight=hist.matched>=3?0.28:hist.matched>0?0.18:0;
+  const avg=recent.length ? currentAvg*(1-histWeight)+hist.avgRatio*histWeight : hist.matched?hist.avgRatio:1;
+  const byRole={};
+  ORD.forEach(r=>{
+    const c=currentByRole[r], h=hist.byRole[r];
+    if(c && h) byRole[r]={n:c.n,ratio:c.ratio*(1-histWeight)+h.ratio*histWeight,avgPrice:c.avgPrice,lastPrice:c.lastPrice,historicalN:h.n,historicalAvgPrice:h.avgPrice};
+    else if(c) byRole[r]=c;
+    else if(h) byRole[r]={n:0,ratio:h.ratio,avgPrice:h.avgPrice,lastPrice:0,historicalN:h.n,historicalAvgPrice:h.avgPrice};
+    else byRole[r]=null;
+  });
+  const totalObs=n+hist.matched;
+  const confBase=n<2?0:n===2?22:n===3?38:n===4?58:n===5?72:n<8?84:92;
+  const histConf=hist.matched>=8?22:hist.matched>=5?16:hist.matched>=3?10:hist.matched>0?5:0;
+  const conf=limite(confBase+histConf,0,96);
   const aggress=limite(50+(avg-1)*300,0,100);
-  const label=n<2?'Profilo iniziale':n===2?'Prime indicazioni':n===3?'Preliminare':n===4?'Attivo':n===5?'Affidabile':'Molto affidabile';
-  return {n,avg,byRole,conf,aggress,label,recentCount:recent.length};
+  const label=n>=5?'Molto affidabile':n===4?'Attivo':n===3?'Preliminare':n===2?'Prime indicazioni':hist.matched>=3?'Profilo storico attivo': 'Profilo iniziale';
+  return {n,avg,byRole,conf,aggress,label,recentCount:recent.length,historicalN:hist.n,historicalMatched:hist.matched,historicalName:hist.name,historicalManager:hist.manager,totalObservations:totalObs};
 }
 function backtestSummary(){
   const ev=S.auctionHistory.filter(e=>Number(e.price)>0&&Number(e.estimate)>0);
@@ -1396,12 +1554,19 @@ function drawBacktesting(){
   box.innerHTML=`<div class="btSummary"><div><small>Osservazioni</small><b>${bt.n}</b></div><div><small>Errore medio</small><b>${bt.n?(Math.round(bt.mae*1000)/10)+'%':'—'}</b></div><div><small>Scostamento medio</small><b>${bt.n?(bt.signed>=0?'+':'')+(Math.round(bt.signed*1000)/10)+'%':'—'}</b></div></div><h4>Accuratezza per ruolo</h4>${roleRows}<h4>Profilazione squadre</h4>${profRows}<h4>Ultimi acquisti registrati</h4><div class="btEvents">${rows||'<div class="sub">Nessun acquisto registrato in questa sessione.</div>'}</div>`;
 }
 
+function storicoPrezzoGiocatore(p){
+  const h=S.storicoPrezzi?.[normalizzaStoricoNome(p?.n)];
+  if(!h || !Number.isFinite(Number(h.price)) || Number(h.price)<=0) return null;
+  return h;
+}
+
 function calcolaPrezzi(mostraTrend=false, resetBase=false){
   const quote = st.rip==='media' ? DATA.quote_media : DATA.quote;
   const mktPrecedenti = new Map(P.map(p=>[p.id, Number(p.mkt)||0]));
   P.forEach(p=>{
-    p.mkt = 1; p.fatt = 1; p.attesoPrezzo = null;
+    p.mkt = 1; p.fatt = 1; p.attesoPrezzo = null; p.prezzoStorico = null; p.prezzoStoricoN = 0;
     p.astaCorr = null; p.astaCorrFonte = null;
+    p.prezzoAsta2026 = null; p.fattoreAsta2026 = null;
     p.trend = null;
   });
 
@@ -1414,7 +1579,19 @@ function calcolaPrezzi(mostraTrend=false, resetBase=false){
     const dentro = pool.slice().sort((a,b)=>b.grezzo-a.grezzo).slice(0,n);
     const somma = dentro.reduce((a,x)=>a+x.grezzo,0);
     const monte = quote[r]/100 * LG.budget * LG.squadre;
-    dentro.forEach(x=>{ x.mkt = Math.max(1, Math.round(x.grezzo/somma*monte)); });
+    dentro.forEach(x=>{ x.mkt = Math.max(1, Math.round(x.grezzo/somma*monte));
+      // Prezzo effettivo 2025-26: è un segnale specifico del singolo giocatore,
+      // più utile della sola media di ruolo. Lo fondiamo senza permettere che
+      // un'asta storica estrema ribalti completamente il modello 2026-27.
+      const h=storicoPrezzoGiocatore(x);
+      x.prezzoStorico=h?.price||null;
+      x.prezzoStoricoN=h?.n||0;
+      if(h?.price){
+        const rapporto=limite(h.price/Math.max(1,x.mkt),0.55,1.80);
+        const peso=h.n>=3?0.45:h.n>=2?0.35:0.25;
+        x.mkt=Math.max(1,Math.round(x.mkt*(1-peso)+x.mkt*rapporto*peso));
+      }
+    });
 
     pool.forEach(x=>{ x.pt2 = x.ptot===null||x.ptot===undefined ? null : x.ptot*fattoreGerarchia(x); });
     const d = dentro.filter(x=>x.mkt>1 && x.pt2!==null);
@@ -1442,7 +1619,25 @@ function calcolaPrezzi(mostraTrend=false, resetBase=false){
     // (resetBase=true) oppure per un giocatore appena importato.
     if(resetBase || !Number.isFinite(Number(p.baseVal)) || Number(p.baseVal)<=0){
       p.baseMkt = p.mkt;
-      p.baseVal = Math.max(1, Math.round(p.mkt*p.fatt));
+      const valoreModello = Math.max(1, Number(p.mkt)*Number(p.fatt||1));
+      const storico = storicoPrezzoGiocatore(p);
+      const prezzoCorrente = prezzoAsta2026(p);
+      // Incrociamo tre segnali: modello statistico, prezzi reali 25/26 e prezzo
+      // realmente pagato nell'asta 26/27 precedente. Quando disponibile, il
+      // prezzo reale dell'asta precedente è il riferimento principale.
+      // Se abbiamo un prezzo realmente pagato nell'asta precedente, quello
+      // diventa l'ANCORA principale. Modello e storico servono solo a correggerlo,
+      // così un modello teorico non può spostare eccessivamente un prezzo reale.
+      const pesoStorico = storico ? (storico.n>=3 ? 0.10 : storico.n>=2 ? 0.08 : 0.06) : 0;
+      const pesoAsta = prezzoCorrente ? 0.75 : 0;
+      const pesoModello = Math.max(0, 1-pesoStorico-pesoAsta);
+      const riferimentoIncrociato = (valoreModello*pesoModello)
+        + (storico ? Number(storico.price)*pesoStorico : 0)
+        + (prezzoCorrente ? prezzoCorrente*pesoAsta : 0);
+      p.fattoreStorico = storico ? (Number(storico.price)/valoreModello) : null;
+      p.prezzoAsta2026 = prezzoCorrente;
+      p.fattoreAsta2026 = prezzoCorrente ? (prezzoCorrente/valoreModello) : null;
+      p.baseVal = Math.max(1, Math.round(riferimentoIncrociato));
     }
     p.val = p.baseVal;
     p.min = Math.max(1, Math.round(p.val*0.85));
@@ -1635,11 +1830,20 @@ function ricalibraConAsta(){
 
       x.attesoPrezzo=Math.max(1,Math.round(x.baseMkt*fattoreTotale));
       x.mkt=x.attesoPrezzo;
-      // val resta il valore intrinseco/statistico; min-max è invece il range
-      // realistico del prezzo di aggiudicazione nell'asta corrente.
+      // Se esiste un prezzo reale dell'asta precedente, il range resta ancorato
+      // a quel riferimento. La situazione della nuova asta può correggerlo, ma
+      // solo entro una fascia contenuta: niente più oscillazioni tipo 348–470
+      // su un giocatore pagato realmente 390.
       x.val=x.baseVal;
-      x.min=Math.max(1,Math.round(x.attesoPrezzo*0.85));
-      x.max=Math.max(x.min,Math.round(x.attesoPrezzo*1.15));
+      const fattoreRange = x.prezzoAsta2026 ? limite(fattoreTotale, 0.90, 1.10) : fattoreTotale;
+      const centroBase = x.prezzoAsta2026
+        ? limite(x.baseVal, Math.round(x.prezzoAsta2026*0.90), Math.round(x.prezzoAsta2026*1.10))
+        : x.baseVal;
+      const centroRange = x.prezzoAsta2026
+        ? Math.max(1, Math.round(centroBase*fattoreRange))
+        : x.attesoPrezzo;
+      x.min=Math.max(1,Math.round(centroRange*0.90));
+      x.max=Math.max(x.min,Math.round(centroRange*1.10));
       x.marg=x.val-x.mkt;
       x.fatt=x.val/x.mkt;
       x.vd=x.mkt<=1 ? 'riempitivo'
@@ -2027,6 +2231,10 @@ function actionBar(p, c){
     </div>
     <div class="factorMini">
       <span>Mercato <b>${p.attesoPrezzo||p.mkt}</b></span>
+      ${p.prezzoStorico?`<span>Storico 25/26 <b>${Math.round(p.prezzoStorico)}</b>${p.prezzoStoricoN>1?` ×${p.prezzoStoricoN}`:''}</span>`:''}
+      ${p.prezzoAsta2026?`<span>Pagato asta precedente <b>${Math.round(p.prezzoAsta2026)}</b></span>`:''}
+      ${p.prezzoStorico?`<span>Impatto storico <b>${p.fattoreStorico>=1?'+':''}${Math.round((p.fattoreStorico-1)*100)}%</b></span>`:''}
+      ${p.prezzoAsta2026?`<span>Impatto asta <b>${p.fattoreAsta2026>=1?'+':''}${Math.round((p.fattoreAsta2026-1)*100)}%</b></span>`:''}
       <span>Scarsità <b>${p.fattoriMercato?((p.fattoriMercato.scarsita-1>=0?'+':'')+Math.round((p.fattoriMercato.scarsita-1)*100)+'%'):'—'}</b></span>
       <span>Competizione <b>${p.myMaxFactors?((p.myMaxFactors.competizione-1>=0?'+':'')+Math.round((p.myMaxFactors.competizione-1)*100)+'%'):'—'}</b></span>
       <span>Rivali reali <b>${p.myMaxFactors?.competitori?.length??'—'}</b></span>
@@ -2763,7 +2971,7 @@ function ocrApplica(){
 $('#ocrApplica').addEventListener('click', ocrApplica);
 
 /* ---------- backup manuale + autosalvataggio ---------- */
-const ASTA_AUTOSAVE_KEY = 'asta2026_autosave_stato_v72';
+const ASTA_AUTOSAVE_KEY = 'asta2026_autosave_stato_v72_8';
 const BACKUP_VERSION = 1;
 function creaSnapshotStato(){
   const importati = P.filter(x=>x.p1000>0).map(x=>[x.id, x.p1000]);
@@ -2836,7 +3044,12 @@ function redraw(){
 }
 
 ripristinaDatasetPersistito();
-if(!ripristinaAutosaveStato()){ calcolaPrezzi(false, true); redraw(); }
+// V72.8 parte volutamente con la rosa vuota: i prezzi della precedente asta
+// sono caricati separatamente da data/prezzi_asta_2026_27.json.
+S.mie={}; S.altrui={}; S.altruiTeam={}; S.veri={}; S.auctionHistory=[]; S.open=null;
+Promise.all([caricaPrezziAsta2026(), caricaStoricoRivaliExcel()]).then(()=>{
+  calcolaPrezzi(false,true); aggiornaRepartoAutomatico(); redraw();
+});
 </script>
 
 
@@ -3086,6 +3299,7 @@ $('#rivaliBtn').addEventListener('click',apriRivaliV65);
 $('#topSimBtn').addEventListener('click',()=>$('#auctionSimSheet').classList.add('on'));
 initRivaliV65();
 drawRivaliV65();
+
 </script>
 </body>
 </html>
